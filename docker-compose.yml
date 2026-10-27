@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: safetext-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-safetext}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-safetext}
+      POSTGRES_DB: ${POSTGRES_DB:-safetext}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-safetext} -d $${POSTGRES_DB:-safetext}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
