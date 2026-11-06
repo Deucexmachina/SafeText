@@ -2,6 +2,8 @@ import "dotenv/config";
 
 export const config = {
   port: Number(process.env.PORT ?? 3001),
+  appOrigin: process.env.APP_ORIGIN ?? "http://localhost:5173",
+  secureCookies: process.env.NODE_ENV === "production",
   databaseUrl:
     process.env.DATABASE_URL ??
     "postgres://safetext:safetext@localhost:5432/safetext",

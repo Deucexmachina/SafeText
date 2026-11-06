@@ -52,6 +52,9 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/api/v1/auth/")) {
+      window.dispatchEvent(new Event("safetext:session-expired"));
+    }
     let title = res.statusText;
     let detail = `Request failed (HTTP ${res.status}).`;
     try {
@@ -89,4 +92,17 @@ export function getScan(id: string) {
 
 export function listScans() {
   return request<{ scans: ScanSummary[] }>("/api/v1/scans");
+}
+
+export interface User { id: string; email: string }
+export function currentUser() { return request<{ user: User }>("/api/v1/auth/me"); }
+export function authenticate(action: "login" | "register", email: string, password: string) {
+  return request<{ user: User }>(`/api/v1/auth/${action}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }),
+  });
+}
+export function logout() {
+  return request<{ ok: boolean }>("/api/v1/auth/logout", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  });
 }

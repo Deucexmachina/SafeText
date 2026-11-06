@@ -30,6 +30,7 @@ export interface ScanRow {
 
 export interface NewScan {
   id: string;
+  userId: string;
   inputType: InputType;
   inputText?: string;
   imageHash?: string;
@@ -39,8 +40,8 @@ export interface NewScan {
 
 export async function createScan(scan: NewScan): Promise<void> {
   await pool.query(
-    `INSERT INTO scans (id, input_type, input_text, image_hash, image_mime, image_bytes)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO scans (id, input_type, input_text, image_hash, image_mime, image_bytes, user_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       scan.id,
       scan.inputType,
@@ -48,14 +49,15 @@ export async function createScan(scan: NewScan): Promise<void> {
       scan.imageHash ?? null,
       scan.imageMime ?? null,
       scan.imageBytes ?? null,
+      scan.userId,
     ],
   );
 }
 
-export async function findIdByImageHash(hash: string): Promise<string | null> {
+export async function findIdByImageHash(hash: string, userId: string): Promise<string | null> {
   const { rows } = await pool.query<{ id: string }>(
-    `SELECT id FROM scans WHERE image_hash = $1`,
-    [hash],
+    `SELECT id FROM scans WHERE image_hash = $1 AND user_id = $2`,
+    [hash, userId],
   );
   return rows[0]?.id ?? null;
 }
@@ -67,10 +69,15 @@ export async function getScan(id: string): Promise<ScanRow | null> {
   return rows[0] ?? null;
 }
 
-export async function listScans(limit: number): Promise<ScanRow[]> {
+export async function getUserScan(id: string, userId: string): Promise<ScanRow | null> {
+  const { rows } = await pool.query<ScanRow>("SELECT * FROM scans WHERE id = $1 AND user_id = $2", [id, userId]);
+  return rows[0] ?? null;
+}
+
+export async function listScans(limit: number, userId: string): Promise<ScanRow[]> {
   const { rows } = await pool.query<ScanRow>(
-    `SELECT * FROM scans ORDER BY created_at DESC LIMIT $1`,
-    [limit],
+    `SELECT * FROM scans WHERE user_id = $2 ORDER BY created_at DESC LIMIT $1`,
+    [limit, userId],
   );
   return rows;
 }

@@ -1,0 +1,13 @@
+{
+  "name": "safetext",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "dev": "node scripts/dev.mjs",
+    "build": "npm --prefix server run build && npm --prefix web run build",
+    "test": "npm --prefix server test"
+  }
+}

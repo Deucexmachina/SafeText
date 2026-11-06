@@ -1,3 +1,17 @@
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions(expires_at);
+
 CREATE TABLE IF NOT EXISTS scans (
   id             TEXT PRIMARY KEY,
   state          TEXT NOT NULL DEFAULT 'QUEUED',
@@ -16,8 +30,11 @@ CREATE TABLE IF NOT EXISTS scans (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Dedup: the same image content always maps to one scan.
-CREATE UNIQUE INDEX IF NOT EXISTS scans_image_hash_key
-  ON scans (image_hash) WHERE image_hash IS NOT NULL;
+-- Existing anonymous scans stay stored but are not assigned to a new account.
+ALTER TABLE scans ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+DROP INDEX IF EXISTS scans_image_hash_key;
+CREATE UNIQUE INDEX IF NOT EXISTS scans_user_image_hash_key
+  ON scans (user_id, image_hash) WHERE image_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS scans_user_created_idx ON scans(user_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS scans_created_at_idx ON scans (created_at DESC);

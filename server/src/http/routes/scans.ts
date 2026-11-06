@@ -4,7 +4,7 @@ import multer from "multer";
 import {
   createScan,
   findIdByImageHash,
-  getScan,
+  getUserScan,
   listScans,
   toDto,
   toSummary,
@@ -45,7 +45,7 @@ scansRouter.post(
           );
         }
         const id = scanId();
-        await createScan({ id, inputType: "text", inputText: text });
+        await createScan({ id, userId: req.user!.id, inputType: "text", inputText: text });
         enqueueScan(id);
         return res.status(202).json({ scanId: id });
       }
@@ -70,7 +70,7 @@ scansRouter.post(
         const hash = createHash("sha256").update(file.buffer).digest("hex");
 
         // Dedup: same image content returns the existing scan, no new job.
-        const existing = await findIdByImageHash(hash);
+        const existing = await findIdByImageHash(hash, req.user!.id);
         if (existing) {
           return res.status(202).json({ scanId: existing, deduplicated: true });
         }
@@ -78,6 +78,7 @@ scansRouter.post(
         try {
           await createScan({
             id,
+            userId: req.user!.id,
             inputType: "image",
             imageHash: hash,
             imageMime: file.mimetype,
@@ -86,7 +87,7 @@ scansRouter.post(
         } catch (err) {
           const code = (err as { code?: string })?.code;
           if (code === "23505") {
-            const winner = await findIdByImageHash(hash);
+            const winner = await findIdByImageHash(hash, req.user!.id);
             if (winner) {
               return res.status(202).json({ scanId: winner, deduplicated: true });
             }
@@ -110,7 +111,7 @@ scansRouter.post(
 
 scansRouter.get("/scan/:id", async (req, res, next) => {
   try {
-    const row = await getScan(req.params.id);
+    const row = await getUserScan(req.params.id, req.user!.id);
     if (!row) {
       throw new HttpError(
         404,
@@ -126,8 +127,8 @@ scansRouter.get("/scan/:id", async (req, res, next) => {
 
 scansRouter.get("/scans", async (req, res, next) => {
   try {
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
-    const rows = await listScans(limit);
+    const limit = Math.floor(Math.min(100, Math.max(1, Number(req.query.limit) || 50)));
+    const rows = await listScans(limit, req.user!.id);
     res.json({ scans: rows.map(toSummary) });
   } catch (err) {
     next(err);

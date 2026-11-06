@@ -2,14 +2,20 @@ import express from "express";
 import multer from "multer";
 import { scansRouter } from "./http/routes/scans.js";
 import { HttpError, sendProblem } from "./http/problem.js";
+import { authRouter, checkOrigin, requireAuth } from "./http/auth.js";
 
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "64kb" }));
+  app.use("/api/v1", checkOrigin);
 
   app.get("/api/v1/health", (_req, res) => res.json({ status: "ok" }));
-  app.use("/api/v1", scansRouter);
+  app.use("/api/v1/auth", authRouter);
+  app.use("/api/v1", requireAuth, (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    next();
+  }, scansRouter);
 
   app.use((_req, res) => {
     sendProblem(res, 404, "Not found", "The requested route does not exist.");

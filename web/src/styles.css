@@ -12,6 +12,13 @@
   --unknown: #57606a;
 }
 
+.auth-card { max-width: 440px; margin: 32px auto; }
+.auth-card h1 { font-size: 24px; margin-top: 0; }
+.auth-card input { width: 100%; border: 1px solid var(--border); border-radius: 5px; padding: 10px; font: inherit; margin-bottom: 16px; }
+.auth-toggle { margin-top: 20px; }
+.account { margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; overflow-wrap: anywhere; }
+.topbar-inner { flex-wrap: wrap; }
+
 * {
   box-sizing: border-box;
 }
