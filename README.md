@@ -147,6 +147,36 @@ Provider adapters live in `server/src/providers`, wired in `index.ts`:
 
 Provider API keys in `server/.env.example` remain unused until real integrations are added.
 
+## GitHub Actions and future deployment
+
+`.github/workflows/ci.yml` runs on every push and pull request, and can also be
+started manually from the repository's **Actions > CI > Run workflow** menu.
+It verifies Node.js 22 and 24 on Linux, installs both apps from their lockfiles,
+type-checks and builds them, runs the integration tests against a temporary
+PostgreSQL service, and starts the compiled API to verify its health endpoint.
+The CI database is created for each job; no local or production data is used.
+No repository secrets are required for CI.
+
+Successful Node.js 24 jobs upload two artifacts, retained for 14 days:
+
+- `web-build`: the contents of `web/dist`, ready for a static host with an SPA
+  fallback to `index.html` and an `/api` proxy to the backend.
+- `server-build`: `dist`, `package.json`, and `package-lock.json`. After downloading
+  into a server directory, run `npm ci --omit=dev`, supply the database and origin
+  configuration through environment variables, then run `npm start`.
+
+Actions are pinned to commit hashes. Dependabot checks action updates weekly.
+After the first successful GitHub run, configure your branch protection/ruleset
+to require both **Build and test (Node 22)** and **Build and test (Node 24)**.
+
+For future CD, the CI workflow also supports `workflow_call`. A deployment workflow
+can call it using `uses: ./.github/workflows/ci.yml`, then make its deploy job depend
+on that verification job with `needs`. Deploy only trusted pushes to your release
+branch, use a GitHub Environment for deployment secrets/approvals, and download
+the artifacts from that same run. The hosting provider, production database,
+credentials, and deployment command must be configured when a destination is chosen.
+There is currently no deployment job or production database connection in Actions.
+
 ## Troubleshooting
 
 - **`EPERM ... unlink ... esbuild.exe` during setup**: a running dev server is holding
