@@ -3,9 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { ApiError, listScans, type ScanSummary } from "../api";
 import { VerdictBadge } from "../components/VerdictBadge";
 
+const PAGE_SIZE = 5;
+
 export function HistoryPage() {
   const [scans, setScans] = useState<ScanSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -26,6 +29,10 @@ export function HistoryPage() {
     return <p className="muted">No scans yet. Check a message first.</p>;
   }
 
+  const pageCount = Math.ceil(scans.length / PAGE_SIZE);
+  const current = Math.min(page, pageCount - 1);
+  const visible = scans.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+
   return (
     <div className="card table-card">
       <table className="history-table">
@@ -37,7 +44,7 @@ export function HistoryPage() {
           </tr>
         </thead>
         <tbody>
-          {scans.map((s) => (
+          {visible.map((s) => (
             <tr key={s.scanId} onClick={() => nav(`/scan/${s.scanId}`)}>
               <td className="nowrap">
                 {new Date(s.createdAt).toLocaleString(undefined, {
@@ -57,6 +64,33 @@ export function HistoryPage() {
           ))}
         </tbody>
       </table>
+      {pageCount > 1 && (
+        <div className="pagination">
+          <button
+            className="page-btn"
+            disabled={current === 0}
+            onClick={() => setPage(current - 1)}
+          >
+            ‹ Prev
+          </button>
+          {Array.from({ length: pageCount }, (_, i) => (
+            <button
+              key={i}
+              className={i === current ? "page-btn active" : "page-btn"}
+              onClick={() => setPage(i)}
+            >
+              {i + 1}
+            </button>
+          ))}
+          <button
+            className="page-btn"
+            disabled={current === pageCount - 1}
+            onClick={() => setPage(current + 1)}
+          >
+            Next ›
+          </button>
+        </div>
+      )}
     </div>
   );
 }

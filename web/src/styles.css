@@ -501,6 +501,63 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px 8px;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  min-width: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #f0f1f2;
+}
+
+.page-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.page-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 14px;
+  margin: 0 0 14px;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.back-btn:hover {
+  background: #f0f1f2;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .preview {
   color: var(--text);
   overflow-wrap: anywhere;
