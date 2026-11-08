@@ -7,8 +7,9 @@ The app uses React/TypeScript (Vite), Node.js/TypeScript (Express), and PostgreS
 Accounts, sessions, and scans persist in PostgreSQL. The in-process scan queue
 resumes unfinished jobs when the backend restarts.
 
-**OCR, scam analysis, and URL threat intelligence still use stub providers.**
-Screenshot OCR returns canned text. Results are for development, not reliable scam detection.
+Scam analysis uses the Kimi API and URL checks use Google Safe Browsing —
+see **Provider API keys** below. Screenshot OCR still returns canned text
+until a real OCR provider is added.
 
 ## Requirements
 
@@ -78,6 +79,22 @@ npm --prefix web run dev
   without deleting data. **`docker compose down -v` deletes all accounts and scans.**
 - Old anonymous scans remain stored without an owner and are hidden from all accounts.
   They are not assigned to the first person who registers.
+
+### Provider API keys
+
+Two providers in `server/.env` enable live scanning:
+
+- `KIMI_API_KEY` — analyzes SMS text via Kimi's OpenAI-compatible Chat
+  Completions API (`https://api.moonshot.ai/v1`). Create a key in the
+  Moonshot AI platform console. `KIMI_MODEL` optionally overrides the
+  default model (`moonshot-v1-8k`).
+- `GOOGLE_SAFE_BROWSING_API_KEY` — checks extracted URLs with the Safe
+  Browsing Lookup API v4 (`threatMatches:find`). Create a key in Google
+  Cloud Console with the Safe Browsing API enabled.
+
+Keys are read server-side only and are never sent to the frontend. A missing
+key makes only that provider fail with a clear error: scans still complete
+as `PARTIAL` or `INCONCLUSIVE` rather than crashing.
 - Image deduplication is per account. Uploading identical bytes in another account
   creates a separate scan. Other accounts cannot access your scans by their IDs.
 
@@ -122,6 +139,14 @@ Status is `RUNNING` during `QUEUED -> EXTRACTING -> ANALYZING`, then `COMPLETE`,
 `PARTIAL`, or `INCONCLUSIVE`. Errors use `application/problem+json` with
 `type`, `title`, `status`, and `detail`.
 
+A finished scan means:
+
+- `COMPLETE` — Kimi analysis and Safe Browsing both succeeded.
+- `PARTIAL` — one stage failed (`incomplete` lists which). The result is still
+  usable: a URL flagged by Safe Browsing forces a `MALICIOUS` verdict with
+  confidence >= 90 even when analysis failed.
+- `INCONCLUSIVE` — text extraction failed, or both providers failed.
+
 ## Development commands
 
 ```powershell
@@ -139,13 +164,15 @@ its user must have permission to create schemas.
 
 Provider adapters live in `server/src/providers`, wired in `index.ts`:
 
-| Interface | Current behavior | Planned integration |
-| --- | --- | --- |
-| `OcrProvider` | Canned SMS text | LLM Whisperer |
-| `ScamAnalyzer` | Heuristic scoring | Kimi |
-| `UrlThreatIntel` | Risky domains and shorteners | Google Safe Browsing |
+| Interface | Implementation |
+| --- | --- |
+| `OcrProvider` | Stub (canned SMS text); LLM Whisperer planned |
+| `ScamAnalyzer` | `KimiScamAnalyzer` — strict-JSON chat completion, validated locally, one stricter retry on malformed output |
+| `UrlThreatIntel` | `GoogleSafeBrowsingThreatIntel` — `MALWARE`, `SOCIAL_ENGINEERING`, `UNWANTED_SOFTWARE` lookups |
 
-Provider API keys in `server/.env.example` remain unused until real integrations are added.
+Both live providers share timeouts, retries for temporary failures
+(timeout, HTTP 429, 5xx), per-provider rate limiting, and a circuit breaker
+that fails fast after repeated outages without blocking other scans.
 
 ## GitHub Actions and future deployment
 

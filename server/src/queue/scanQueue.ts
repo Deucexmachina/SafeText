@@ -1,7 +1,7 @@
 import { getScan, saveExtraction, saveResult, setState } from "../db/scans.js";
 import { analyzer, ocr, threatIntel } from "../providers/index.js";
-import { extractUrls, hostnameOf } from "../domain/extract.js";
-import type { AnalysisResult, Stage, ThreatIntelResult } from "../domain/types.js";
+import { extractUrls } from "../domain/extract.js";
+import { combineScanResults } from "../domain/verdicts.js";
 
 // In-process FIFO queue. QUEUED -> EXTRACTING -> ANALYZING -> terminal.
 const pending: string[] = [];
@@ -65,29 +65,14 @@ async function processScan(id: string): Promise<void> {
     threatIntel.lookup(extractUrls(text)),
   ]);
 
-  const incomplete: Stage[] = [];
-  let analysis: AnalysisResult | null =
-    aRes.status === "fulfilled" ? aRes.value : null;
-  const intel: ThreatIntelResult | null =
-    tRes.status === "fulfilled" ? tRes.value : null;
-  if (!analysis) incomplete.push("analysis");
-  if (!intel) incomplete.push("threat_intel");
+  const { state, analysis, threatIntel: intel, incomplete } =
+    combineScanResults(
+      aRes.status === "fulfilled" ? aRes.value : null,
+      tRes.status === "fulfilled" ? tRes.value : null,
+      text,
+      senderId,
+    );
 
-  // A flagged URL escalates an otherwise-safe verdict.
-  const flagged = intel?.urls.find((u) => u.threat);
-  if (analysis?.verdict === "SAFE" && flagged) {
-    analysis = {
-      ...analysis,
-      verdict: "SUSPICIOUS",
-      confidence: Math.max(analysis.confidence, 60),
-      reasons: [
-        `Flagged by threat intelligence (${hostnameOf(flagged.url) ?? flagged.url}: ${flagged.threat})`,
-        ...analysis.reasons,
-      ].slice(0, 5),
-    };
-  }
-
-  const state = !analysis ? "INCONCLUSIVE" : incomplete.length ? "PARTIAL" : "COMPLETE";
   await saveResult(id, {
     state,
     analysis,
