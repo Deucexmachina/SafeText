@@ -13,7 +13,7 @@ import {
 
 const PROVIDER = "Kimi";
 const DEFAULT_BASE_URL = "https://api.moonshot.ai/v1";
-const DEFAULT_MODEL = "moonshot-v1-8k";
+const DEFAULT_MODEL = "kimi-k3";
 
 const VERDICTS: Verdict[] = ["SAFE", "SUSPICIOUS", "MALICIOUS"];
 
@@ -117,7 +117,8 @@ export class KimiScamAnalyzer implements ScamAnalyzer {
         },
         body: JSON.stringify({
           model: this.model,
-          temperature: 0,
+          // No temperature: some Kimi models (e.g. kimi-k3) only accept their
+          // default value, so it is left to the server.
           max_tokens: 800,
           response_format: { type: "json_object" },
           messages,

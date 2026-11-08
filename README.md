@@ -87,7 +87,7 @@ Two providers in `server/.env` enable live scanning:
 - `KIMI_API_KEY` — analyzes SMS text via Kimi's OpenAI-compatible Chat
   Completions API (`https://api.moonshot.ai/v1`). Create a key in the
   Moonshot AI platform console. `KIMI_MODEL` optionally overrides the
-  default model (`moonshot-v1-8k`).
+  default model (`kimi-k3`).
 - `GOOGLE_SAFE_BROWSING_API_KEY` — checks extracted URLs with the Safe
   Browsing Lookup API v4 (`threatMatches:find`). Create a key in Google
   Cloud Console with the Safe Browsing API enabled.

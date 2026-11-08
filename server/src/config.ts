@@ -11,6 +11,6 @@ export const config = {
   // with a clear error; the rest of the scan pipeline keeps working.
   llmWhispererApiKey: process.env.LLM_WHISPERER_API_KEY ?? "",
   kimiApiKey: process.env.KIMI_API_KEY ?? "",
-  kimiModel: process.env.KIMI_MODEL ?? "moonshot-v1-8k",
+  kimiModel: process.env.KIMI_MODEL ?? "kimi-k3",
   safeBrowsingApiKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY ?? "",
 };
