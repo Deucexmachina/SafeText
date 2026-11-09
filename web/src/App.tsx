@@ -5,6 +5,7 @@ import { ScanDetailPage } from "./pages/ScanDetailPage";
 import { useEffect, useState } from "react";
 import { ApiError, currentUser, logout, type User } from "./api";
 import { AuthPage } from "./pages/AuthPage";
+import { AdminPage } from "./pages/AdminPage";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -51,6 +52,7 @@ export default function App() {
             >
               History
             </NavLink>
+            {user.role === 'admin' && <NavLink to="/admin" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Admin</NavLink>}
           </nav>}
           {user && <div className="account"><span>{user.email}</span><button className="link-btn" onClick={signOut}>Log out</button></div>}
         </div>
@@ -61,6 +63,7 @@ export default function App() {
           <Route path="/" element={<ScanPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/scan/:id" element={<ScanDetailPage />} />
+          <Route path="/admin" element={user.role === 'admin' ? <AdminPage /> : <p role="alert" className="error-box">Administrator access is required.</p>} />
         </Routes>}
       </main>
     </BrowserRouter>

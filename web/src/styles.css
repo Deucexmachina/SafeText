@@ -497,6 +497,40 @@ textarea:disabled {
   border-bottom: none;
 }
 
+.history-actions {
+  width: 40px;
+  text-align: right;
+}
+
+.delete-scan-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.delete-scan-btn:hover:not(:disabled) {
+  color: var(--bad);
+  background: #fff0f0;
+}
+
+.delete-scan-btn:focus-visible {
+  outline: 2px solid var(--bad);
+  outline-offset: 2px;
+}
+
+.delete-scan-btn:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
 .nowrap {
   white-space: nowrap;
 }
@@ -563,6 +597,9 @@ textarea:disabled {
   overflow-wrap: anywhere;
   max-width: 320px;
 }
+
+.admin-table-wrap { overflow-x: auto; }
+.admin-table-wrap tbody tr { cursor: default; }
 
 @media (max-width: 520px) {
   .preview {

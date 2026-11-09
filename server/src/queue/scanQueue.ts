@@ -28,7 +28,7 @@ async function drain(): Promise<void> {
     while (pending.length > 0) {
       const id = pending.shift()!;
       await processScan(id).catch((err) =>
-        console.error(`scan ${id} failed:`, err),
+        console.error(`scan ${id} failed`, { name: err instanceof Error ? err.name : 'UnknownError' }),
       );
     }
   } finally {

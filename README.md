@@ -141,8 +141,8 @@ and [Kimi K3](https://platform.kimi.ai/docs/guide/kimi-k3-quickstart).
 
 Passwords use salted scrypt hashes. Sessions last seven days, using random tokens
 in HttpOnly, SameSite cookies; the database stores only token hashes. Logout revokes
-the session. Login and registration share a limit of 20 attempts per IP per 15 minutes;
-the limit resets when the API restarts.
+the session. Login and registration share a limit of 20 attempts per IP and per
+account email per 15 minutes; the database-backed limit survives API restarts.
 
 Browser writes must match `APP_ORIGIN` (default `http://localhost:5173`). Use that exact
 URL locally. Vite stays on port 5173 so it cannot silently change origins.
@@ -150,6 +150,67 @@ For deployment, use HTTPS, set `NODE_ENV=production` to enable Secure cookies,
 set `APP_ORIGIN` to the public origin, and serve the frontend and `/api` from that
 same origin. Email verification, password resets, and multi-factor authentication
 are not implemented.
+
+## Roles and administrator setup
+
+Every account starts as `user`, including the first registered account. There
+can be one `admin`, enforced by a database index. Registration/login cannot set
+roles. Existing accounts remain users after the migration. To make a trusted
+existing account the admin, run this locally from the project root:
+
+```powershell
+npm.cmd --prefix server run admin:grant -- your-admin-account@example.com
+```
+
+Register that account first and choose its password in the app; there is no
+default admin password or public promotion endpoint. The command revokes that
+account's sessions; sign in again to see the **Admin** tab. It refuses to grant
+a second administrator. Never auto-promote the first visitor or grant admin
+based only on a public registration email, because email ownership is not verified.
+
+The admin can list accounts with scan counts and enable/disable ordinary users.
+Disabling revokes sessions and blocks login; enabling requires a fresh login.
+Access changes are recorded in `admin_audit` with actor, target, action and UTC
+timestamp. Admin access does not grant permission to read/delete other users'
+messages. Role and disabled status are checked against the database on every
+authenticated request. The admin cannot disable their own account in the UI.
+
+## Security review and deployment limits
+
+The review covered session authentication, role checks, scan ownership, upload
+validation, provider credentials, query parameterization, error output, abuse
+limits and npm dependency advisories. Automated tests cover privilege escalation,
+cross-account access/deletion, session revocation and concurrent queue admission.
+This is a targeted code review and regression suite, not a penetration-test certification.
+
+- Authentication throttles IPs and account emails at 20 attempts per 15 minutes
+  using hashed keys in PostgreSQL, surviving restarts and multiple processes.
+- Scan submission is limited to 20 requests per account per 15 minutes in each
+  API process. Queue admission is enforced transactionally in PostgreSQL: at
+  most three active scans per account and 100 globally. For multiple API
+  instances, use a shared scan-rate-limit store and a coordinated job runner;
+  the current in-process worker is intended for a single API instance.
+- API responses use no-store, nosniff, frame denial, no-referrer, restrictive
+  permissions and an API-only content-security policy. The production frontend
+  host must separately configure HTTPS, HSTS and an appropriate frontend CSP;
+  do not copy the API's `default-src 'none'` policy onto the frontend.
+- Production startup requires an explicit HTTPS `APP_ORIGIN` without a trailing
+  slash and a PostgreSQL `DATABASE_URL` with non-default credentials. Configure
+  Secure cookies by setting `NODE_ENV=production`. Local development credentials
+  remain for local use. Keep Postgres on localhost/a private network.
+- Existing HttpOnly/SameSite session cookies, salted scrypt passwords, origin
+  checks on writes, parameterized SQL, private history, supported-image signature
+  checks and 8 MB upload limits remain in place. Unknown request/worker errors
+  do not log raw message bodies, provider response bodies or connection secrets.
+- Account disabling does not recall requests already sent to providers. No
+  email verification, password recovery, MFA, admin reauthentication, automatic
+  message retention policy or encrypted application storage has been added.
+  Use a strong unique admin password; configure backups/storage encryption and
+  operational monitoring before exposing the app publicly. Audit dependencies
+  regularly; a clean audit is a point-in-time advisory check.
+
+Security references: [OWASP authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
+and [session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 
 ## API
 
@@ -164,7 +225,10 @@ Base path: `/api/v1`. Vite proxies `/api` to the backend on port 3001.
 | POST | `/auth/logout` | JSON `{}`; revokes session and clears cookie |
 | POST | `/scan` | Authenticated; JSON text or multipart image field `file`; returns 202 and scanId |
 | GET | `/scan/:id` | Authenticated; owner's scan; 404 for another account's scan |
+| DELETE | `/scan/:id` | Authenticated; permanently deletes only the owner's scan; 404 for another account's scan |
 | GET | `/scans?limit=50` | Authenticated; owner's history; maximum 100 |
+| GET | `/admin/users?limit=20&offset=0` | Admin only; account metadata and scan counts, without SMS content |
+| PATCH | `/admin/users/:id` | Admin only; JSON `{ "disabled": true/false }`; revokes sessions and audits the change |
 
 PowerShell example (create your account in the UI first):
 

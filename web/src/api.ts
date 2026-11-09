@@ -96,7 +96,18 @@ export function listScans() {
   return request<{ scans: ScanSummary[] }>("/api/v1/scans");
 }
 
-export interface User { id: string; email: string }
+export function deleteScan(id: string) {
+  return request<{ ok: boolean }>(`/api/v1/scan/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export interface User { id: string; email: string; role: 'user' | 'admin' }
+export interface AdminUser extends User { disabled: boolean; createdAt: string; scanCount: number }
+export function listUsers(offset = 0) { return request<{ users: AdminUser[] }>(`/api/v1/admin/users?limit=20&offset=${offset}`); }
+export function setUserDisabled(id: string, disabled: boolean) {
+  return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disabled }),
+  });
+}
 export function currentUser() { return request<{ user: User }>("/api/v1/auth/me"); }
 export function authenticate(action: "login" | "register", email: string, password: string) {
   return request<{ user: User }>(`/api/v1/auth/${action}`, {

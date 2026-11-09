@@ -98,6 +98,17 @@ test("accounts, sessions, private scans and migrations against PostgreSQL", asyn
     assert.equal(login.status, 200);
     const loginCookie = login.headers.get("set-cookie")!.split(";")[0];
     assert.equal((await (await call("/scans?limit=1.5", "GET", undefined, loginCookie)).json() as { scans: unknown[] }).scans.length, 1);
+    // Deletion is authenticated, origin-checked, and scoped to the owner.
+    assert.equal((await call(`/scan/${scanId}`, "DELETE")).status, 401);
+    assert.equal((await call(`/scan/${scanId}`, "DELETE", undefined, secondCookie)).status, 404);
+    assert.equal((await call(`/scan/${scanId}`, "GET", undefined, loginCookie)).status, 200);
+    assert.equal((await call(`/scan/${scanId}`, "DELETE", undefined, loginCookie, "https://evil.example")).status, 403);
+    assert.equal((await call(`/scan/${scanId}`, "DELETE", undefined, loginCookie)).status, 200);
+    assert.equal((await call(`/scan/${scanId}`, "GET", undefined, loginCookie)).status, 404);
+    assert.equal((await call(`/scan/${scanId}`, "DELETE", undefined, loginCookie)).status, 404);
+    assert.equal((await call(`/scan/${firstImage.scanId}`, "DELETE", undefined, loginCookie)).status, 200);
+    assert.equal((await call(`/scan/${otherImage.scanId}`, "GET", undefined, secondCookie)).status, 200);
+    assert.deepEqual(await (await call("/scans", "GET", undefined, loginCookie)).json(), { scans: [] });
     await pool.query("UPDATE sessions SET expires_at = now() - interval '1 second'");
     assert.equal((await call("/auth/me", "GET", undefined, loginCookie)).status, 401);
     for (let i = 0; i < 21; i++) {

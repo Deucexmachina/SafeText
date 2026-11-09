@@ -3,15 +3,26 @@ import multer from "multer";
 import { scansRouter } from "./http/routes/scans.js";
 import { HttpError, sendProblem } from "./http/problem.js";
 import { authRouter, checkOrigin, requireAuth } from "./http/auth.js";
+import { adminRouter } from "./http/routes/admin.js";
 
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(express.json({ limit: "64kb" }));
   app.use("/api/v1", checkOrigin);
 
   app.get("/api/v1/health", (_req, res) => res.json({ status: "ok" }));
   app.use("/api/v1/auth", authRouter);
+  app.use("/api/v1/admin", requireAuth, adminRouter);
   app.use("/api/v1", requireAuth, (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     next();
@@ -50,7 +61,10 @@ export function createApp() {
           "Request body is not valid JSON.",
         );
       }
-      console.error(err);
+      if ((err as { status?: number })?.status === 413) return sendProblem(res, 413, 'Request too large', 'The request body exceeds the allowed size.');
+      if ((err as { status?: number })?.status === 415) return sendProblem(res, 415, 'Unsupported encoding', 'Use a supported request encoding.');
+      // Never log request bodies, query parameters, provider payloads or secrets.
+      console.error('Request failed', { name: err instanceof Error ? err.name : 'UnknownError' });
       sendProblem(
         res,
         500,

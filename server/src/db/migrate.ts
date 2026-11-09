@@ -26,7 +26,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       return pool.end();
     })
     .catch((err) => {
-      console.error("migration failed:", err);
+      console.error("Migration failed; check database connectivity and permissions.", { name: err instanceof Error ? err.name : 'UnknownError' });
       process.exit(1);
     });
 }

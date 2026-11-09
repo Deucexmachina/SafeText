@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
 import multer from "multer";
+import { rateLimit } from "express-rate-limit";
 import {
   createScan,
   findIdByImageHash,
   retryImageScan,
   getUserScan,
+  deleteUserScan,
   listScans,
   toDto,
   toSummary,
@@ -21,9 +23,14 @@ const upload = multer({
 });
 
 export const scansRouter = Router();
+const scanLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, keyGenerator: req => req.user!.id,
+  standardHeaders: 'draft-7', legacyHeaders: false,
+  handler: (_req, res) => res.status(429).type('application/problem+json').json({ type: 'about:blank', title: 'Scan limit reached', status: 429, detail: 'You can submit up to 20 scans every 15 minutes. Please try again later.' }),
+});
 
 scansRouter.post(
   "/scan",
+  scanLimiter,
   (req, res, next) => {
     if (req.is("multipart/form-data")) return upload.any()(req, res, next);
     next();
@@ -130,6 +137,17 @@ scansRouter.get("/scan/:id", async (req, res, next) => {
       );
     }
     res.json(toDto(row));
+  } catch (err) {
+    next(err);
+  }
+});
+
+scansRouter.delete("/scan/:id", async (req, res, next) => {
+  try {
+    if (!await deleteUserScan(req.params.id, req.user!.id)) {
+      throw new HttpError(404, "Scan not found", "The scan does not exist or is not in your history.");
+    }
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

@@ -10,6 +10,24 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at TIMESTAMPTZ NOT NULL
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin'));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT false;
+-- The product has one administrator; concurrent promotions cannot create two.
+CREATE UNIQUE INDEX IF NOT EXISTS users_single_admin ON users(role) WHERE role = 'admin';
+
+CREATE TABLE IF NOT EXISTS admin_audit (
+  id BIGSERIAL PRIMARY KEY,
+  actor_id UUID NOT NULL REFERENCES users(id),
+  target_id UUID NOT NULL REFERENCES users(id),
+  action TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  key_hash TEXT PRIMARY KEY,
+  attempts INTEGER NOT NULL,
+  window_start TIMESTAMPTZ NOT NULL
+);
 CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS scans (

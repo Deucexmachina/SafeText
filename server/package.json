@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-schema.mjs",
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
+    "admin:grant": "tsx src/db/admin.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts"
   },

@@ -52,6 +52,9 @@ The proposal is for Systems Integration and Architecture 2, September 2026, by t
 - Image extraction provenance is stored in `extraction_source`. Only `llmwhisperer_v2` text can be reused for an image scan. Legacy unverified image results are suppressed in results/history; re-upload forces real OCR even if the cached legacy scan was COMPLETE. Do not backfill legacy rows as trusted OCR.
 - Local startup: `npm.cmd run setup`, `npm.cmd run db:up`, `npm.cmd run dev`; frontend http://localhost:5173. Docker/PostgreSQL became healthy during verification, but provider keys were empty; do not assume live scans are configured.
 - GitHub remote: https://github.com/Deucexmachina/SafeText.git; local main tracks origin/main.
+- RBAC now has `user` and one database-enforced `admin`. Public registration always creates users. The local `npm --prefix server run admin:grant -- email` command promotes an existing account and revokes its sessions. The user selected `safetextadmin@gmail.com`, but it was not registered when checked; do not silently assign a different account or invent a password.
+- Admin UI/API manages account enable/disable and scan counts without revealing other users' SMS contents. Disable/enable revokes sessions and records an audit event. Authentication checks current role and disabled state on every request.
+- Login throttling is PostgreSQL-backed. Scan submissions have a per-process rate limit and database-enforced queue admission (three active per user, 100 global). API security headers and production HTTPS/non-default database configuration checks were added. Consult README security limits; do not describe the app as fully secure or penetration-tested.
 
 ## Working with the user
 

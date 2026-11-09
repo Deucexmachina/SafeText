@@ -9,6 +9,17 @@ import type {
   ThreatIntelResult,
 } from "../domain/types.js";
 import { pool } from "./pool.js";
+import type { PoolClient } from 'pg';
+import { HttpError } from '../http/problem.js';
+
+async function checkScanCapacity(client: PoolClient, userId: string): Promise<void> {
+  // All admissions share this transaction lock, avoiding check/insert races.
+  await client.query('SELECT pg_advisory_xact_lock(1935763001)');
+  const { rows } = await client.query<{ total: number; owned: number }>(
+    `SELECT count(*)::int AS total, count(*) FILTER (WHERE user_id = $1)::int AS owned
+     FROM scans WHERE state IN ('QUEUED', 'EXTRACTING', 'ANALYZING')`, [userId]);
+  if (rows[0].owned >= 3 || rows[0].total >= 100) throw new HttpError(429, 'Scan queue busy', 'Wait for current scans to finish before submitting another message.');
+}
 
 export interface ScanRow {
   id: string;
@@ -40,7 +51,11 @@ export interface NewScan {
 }
 
 export async function createScan(scan: NewScan): Promise<void> {
-  await pool.query(
+  const client = await pool.connect();
+  try {
+  await client.query('BEGIN');
+  await checkScanCapacity(client, scan.userId);
+  await client.query(
     `INSERT INTO scans (id, input_type, input_text, image_hash, image_mime, image_bytes, user_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
@@ -53,6 +68,9 @@ export async function createScan(scan: NewScan): Promise<void> {
       scan.userId,
     ],
   );
+  await client.query('COMMIT');
+  } catch (err) { await client.query('ROLLBACK'); throw err; }
+  finally { client.release(); }
 }
 
 export async function findIdByImageHash(hash: string, userId: string): Promise<string | null> {
@@ -66,7 +84,16 @@ export async function findIdByImageHash(hash: string, userId: string): Promise<s
 // Retrying a failed scan reuses stored one-time OCR text when available.
 // Concurrent repeat uploads cannot enqueue two new OCR jobs.
 export async function retryImageScan(id: string, bytes: Buffer): Promise<boolean> {
-  const result = await pool.query(
+  const client = await pool.connect();
+  try {
+  await client.query('BEGIN');
+  await client.query('SELECT pg_advisory_xact_lock(1935763001)');
+  const candidate = await client.query<{ user_id: string }>(
+    `SELECT user_id FROM scans WHERE id = $1 AND input_type = 'image' AND
+      (state IN ('PARTIAL', 'INCONCLUSIVE') OR (state = 'COMPLETE' AND extraction_source IS DISTINCT FROM 'llmwhisperer_v2')) FOR UPDATE`, [id]);
+  if (!candidate.rows[0]) { await client.query('COMMIT'); return false; }
+  await checkScanCapacity(client, candidate.rows[0].user_id);
+  const result = await client.query(
     `UPDATE scans SET state = 'QUEUED', analysis = NULL, threat_intel = NULL,
        incomplete = '[]'::jsonb, error = NULL, updated_at = now(),
        extracted_text = CASE WHEN extraction_source IS DISTINCT FROM 'llmwhisperer_v2' OR incomplete ? 'extraction' THEN NULL ELSE NULLIF(extracted_text, '') END,
@@ -77,7 +104,10 @@ export async function retryImageScan(id: string, bytes: Buffer): Promise<boolean
         (state = 'COMPLETE' AND extraction_source IS DISTINCT FROM 'llmwhisperer_v2')) RETURNING id`,
     [id, bytes],
   );
+  await client.query('COMMIT');
   return !!result.rowCount;
+  } catch (err) { await client.query('ROLLBACK'); throw err; }
+  finally { client.release(); }
 }
 
 export async function getScan(id: string): Promise<ScanRow | null> {
@@ -90,6 +120,11 @@ export async function getScan(id: string): Promise<ScanRow | null> {
 export async function getUserScan(id: string, userId: string): Promise<ScanRow | null> {
   const { rows } = await pool.query<ScanRow>("SELECT * FROM scans WHERE id = $1 AND user_id = $2", [id, userId]);
   return rows[0] ?? null;
+}
+
+export async function deleteUserScan(id: string, userId: string): Promise<boolean> {
+  const result = await pool.query("DELETE FROM scans WHERE id = $1 AND user_id = $2 RETURNING id", [id, userId]);
+  return !!result.rowCount;
 }
 
 export async function listScans(limit: number, userId: string): Promise<ScanRow[]> {

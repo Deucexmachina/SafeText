@@ -4,6 +4,15 @@ import { fileURLToPath } from "node:url";
 // Resolve independently of cwd (npm dev, compiled startup, and tests differ).
 loadEnv({ path: fileURLToPath(new URL("../.env", import.meta.url)) });
 
+if (process.env.NODE_ENV === 'production') {
+  let validOrigin = false;
+  let validDatabase = false;
+  try { const origin = new URL(process.env.APP_ORIGIN ?? ''); validOrigin = origin.protocol === 'https:' && origin.origin === process.env.APP_ORIGIN; } catch { /* Never echo invalid environment values. */ }
+  try { const database = new URL(process.env.DATABASE_URL ?? ''); validDatabase = ['postgres:', 'postgresql:'].includes(database.protocol) && !!database.password && database.password !== 'safetext'; } catch { /* Never echo credentials. */ }
+  if (!validOrigin) throw new Error('Production requires APP_ORIGIN as an HTTPS origin without a trailing slash.');
+  if (!validDatabase) throw new Error('Production requires DATABASE_URL with non-default database credentials.');
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3001),
   appOrigin: process.env.APP_ORIGIN ?? "http://localhost:5173",

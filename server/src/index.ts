@@ -16,6 +16,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("failed to start:", err);
+  console.error("Failed to start; check database connectivity and configuration.", { name: err instanceof Error ? err.name : 'UnknownError' });
   process.exit(1);
 });
