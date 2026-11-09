@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS scans (
 
 -- Existing anonymous scans stay stored but are not assigned to a new account.
 ALTER TABLE scans ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+-- NULL identifies legacy extractions, including results from the former stub.
+-- Never label existing image text as real OCR during migration.
+ALTER TABLE scans ADD COLUMN IF NOT EXISTS extraction_source TEXT;
 DROP INDEX IF EXISTS scans_image_hash_key;
 CREATE UNIQUE INDEX IF NOT EXISTS scans_user_image_hash_key
   ON scans (user_id, image_hash) WHERE image_hash IS NOT NULL;

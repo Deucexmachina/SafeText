@@ -12,6 +12,10 @@ test("accounts, sessions, private scans and migrations against PostgreSQL", asyn
   await admin.query(`CREATE SCHEMA ${schema}`);
   url.searchParams.set("options", `-c search_path=${schema}`);
   process.env.DATABASE_URL = url.href;
+  // Tests must not consume real provider quota even if developer keys exist.
+  process.env.KIMI_API_KEY = "";
+  process.env.LLM_WHISPERER_API_KEY = "";
+  process.env.GOOGLE_SAFE_BROWSING_API_KEY = "";
   const { pool } = await import("../src/db/pool.js");
   const { migrate } = await import("../src/db/migrate.js");
   const { createApp } = await import("../src/app.js");
@@ -69,7 +73,7 @@ test("accounts, sessions, private scans and migrations against PostgreSQL", asyn
 
     async function image(session: string) {
       const data = new FormData();
-      data.append("file", new Blob(["test image bytes"], { type: "image/png" }), "sms.png");
+      data.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5gAAAABJRU5ErkJggg==", "base64")], { type: "image/png" }), "sms.png");
       const res = await fetch(`${base}/scan`, { method: "POST", headers: { Cookie: session }, body: data });
       assert.equal(res.status, 202);
       return await res.json() as { scanId: string; deduplicated?: boolean };

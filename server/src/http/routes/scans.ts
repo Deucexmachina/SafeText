@@ -4,6 +4,7 @@ import multer from "multer";
 import {
   createScan,
   findIdByImageHash,
+  retryImageScan,
   getUserScan,
   listScans,
   toDto,
@@ -12,10 +13,11 @@ import {
 import { enqueueScan } from "../../queue/scanQueue.js";
 import { scanId } from "../../lib/ulid.js";
 import { HttpError } from "../problem.js";
+import { IMAGE_MIMES, validImage } from "../../providers/ocr/imageValidation.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 8 * 1024 * 1024, files: 1, fields: 1, fieldSize: 64 * 1024 },
 });
 
 export const scansRouter = Router();
@@ -29,6 +31,9 @@ scansRouter.post(
   async (req, res, next) => {
     try {
       if (req.is("application/json")) {
+        if (req.body?.file !== undefined || req.body?.image !== undefined) {
+          throw new HttpError(400, "Choose one input", "Submit text as JSON or a screenshot as multipart, not both.");
+        }
         const text: unknown = req.body?.text;
         if (typeof text !== "string" || !text.trim()) {
           throw new HttpError(
@@ -51,6 +56,9 @@ scansRouter.post(
       }
 
       if (req.is("multipart/form-data")) {
+        if (req.body?.text !== undefined && (typeof req.body.text !== "string" || req.body.text.trim())) {
+          throw new HttpError(400, "Choose one input", "Submit pasted SMS text or a screenshot, not both. Neither input was analyzed.");
+        }
         const files = (req.files ?? []) as Express.Multer.File[];
         const file = files.find((f) => f.fieldname === "file") ?? files[0];
         if (!file) {
@@ -60,11 +68,11 @@ scansRouter.post(
             'Expected an image in the "file" field.',
           );
         }
-        if (!file.mimetype.startsWith("image/")) {
+        if (!IMAGE_MIMES.includes(file.mimetype) || !validImage(file.buffer, file.mimetype)) {
           throw new HttpError(
             415,
             "Unsupported media type",
-            `Uploaded file must be an image, got ${file.mimetype}.`,
+            "Upload a valid PNG, JPEG, WEBP, GIF, BMP or TIFF screenshot up to 8 MB.",
           );
         }
         const hash = createHash("sha256").update(file.buffer).digest("hex");
@@ -72,6 +80,7 @@ scansRouter.post(
         // Dedup: same image content returns the existing scan, no new job.
         const existing = await findIdByImageHash(hash, req.user!.id);
         if (existing) {
+          if (await retryImageScan(existing, file.buffer)) enqueueScan(existing);
           return res.status(202).json({ scanId: existing, deduplicated: true });
         }
         const id = scanId();
@@ -89,6 +98,7 @@ scansRouter.post(
           if (code === "23505") {
             const winner = await findIdByImageHash(hash, req.user!.id);
             if (winner) {
+              if (await retryImageScan(winner, file.buffer)) enqueueScan(winner);
               return res.status(202).json({ scanId: winner, deduplicated: true });
             }
           }

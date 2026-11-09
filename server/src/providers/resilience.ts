@@ -167,7 +167,16 @@ export function toProviderError(provider: string, err: unknown): ProviderError {
 // Throws a ProviderError for non-2xx responses; 429 and 5xx are retryable.
 export function assertOk(provider: string, res: Response): void {
   if (res.ok) return;
-  throw new ProviderError(provider, "request rejected", {
+  const detail = res.status === 401 || res.status === 403
+    ? "request rejected; check the server-side API key, account permissions and provider region"
+    : res.status === 402
+      ? "request rejected; check the provider account quota or billing"
+      : res.status === 429
+        ? "rate limit or quota reached; try again later"
+        : res.status === 400 || res.status === 404
+          ? "request rejected; check the configured model, provider URL and region"
+          : "request rejected; the provider may be temporarily unavailable";
+  throw new ProviderError(provider, detail, {
     status: res.status,
     retryable: res.status === 429 || res.status >= 500,
   });

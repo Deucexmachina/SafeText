@@ -8,8 +8,8 @@ Accounts, sessions, and scans persist in PostgreSQL. The in-process scan queue
 resumes unfinished jobs when the backend restarts.
 
 Scam analysis uses the Kimi API and URL checks use Google Safe Browsing —
-see **Provider API keys** below. Screenshot OCR still returns canned text
-until a real OCR provider is added.
+see **Provider API keys** below. Screenshot OCR uses LLMWhisperer v2; pasted
+text goes directly to analysis without OCR.
 
 ## Requirements
 
@@ -82,7 +82,14 @@ npm --prefix web run dev
 
 ### Provider API keys
 
-Two providers in `server/.env` enable live scanning:
+Configure providers in `server/.env` to enable live scanning. Restart the backend
+after changing these settings. Empty keys do not enable a demo verdict.
+
+- `LLM_WHISPERER_API_KEY` — required only for screenshot OCR.
+- `LLM_WHISPERER_BASE_URL` — full regional v2 API base URL. Defaults to
+  `https://llmwhisperer-api.us-central.unstract.com/api/v2`. For an EU account use
+  `https://llmwhisperer-api.eu-west.unstract.com/api/v2`. Match the region of
+  the key; there is no automatic region switching.
 
 - `KIMI_API_KEY` — analyzes SMS text via Kimi's OpenAI-compatible Chat
   Completions API (`https://api.moonshot.ai/v1`). Create a key in the
@@ -95,6 +102,40 @@ Two providers in `server/.env` enable live scanning:
 Keys are read server-side only and are never sent to the frontend. A missing
 key makes only that provider fail with a clear error: scans still complete
 as `PARTIAL` or `INCONCLUSIVE` rather than crashing.
+
+Use **one input per scan**. Text plus an image is rejected with a validation
+message instead of silently dropping the text. Screenshot formats are PNG,
+JPEG, WEBP, GIF, BMP, and TIFF, with a maximum size of 8 MB. The backend checks
+the MIME type and file signature before submitting raw binary bytes to OCR.
+OCR uses a bounded 120-second deadline and at most 30 status polls. Unreadable
+or empty extraction is INCONCLUSIVE and is never sent to Kimi.
+
+One-time OCR output is saved before analysis starts, and screenshot bytes are
+removed after extraction or terminal failure. Re-uploading a successful image
+returns its saved result; re-uploading a failed/partial image retries that scan,
+reusing readable saved text. Restarted jobs likewise reuse saved extraction.
+Only image text marked as LLMWhisperer v2 extraction is eligible for reuse.
+Legacy screenshot results (including the former canned OCR samples) are shown
+as unverified and cannot supply analysis or history previews. Re-uploading the
+same screenshot forces fresh OCR and replaces that scan's unverified result.
+The migration does not infer provenance from message contents or delete history.
+The UI displays queue/extraction/analysis progress and sanitized provider errors.
+The scan response adds `progress` and `error` without changing existing routes
+or fields. `incomplete` continues to use `extraction`, `analysis`, `threat_intel`.
+
+Kimi K3 always uses reasoning, so its request reserves completion tokens for
+reasoning plus JSON and uses low reasoning effort. The output is validated
+locally; malformed, truncated, or refused output is retried once, then disclosed
+as incomplete. Safe Browsing checks the union of locally extracted URLs and
+Kimi URL entities, including local candidates when Kimi fails. A partial result
+cannot claim SAFE; a flagged URL still forces MALICIOUS with confidence >= 90.
+
+Provider contracts: [LLMWhisperer extraction](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_api/),
+[status](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_status_api/),
+[one-time retrieval](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_retrieve_api/),
+[supported formats](https://docs.unstract.com/llmwhisperer/llm_whisperer/list_of_file_types_supported/),
+and [Kimi K3](https://platform.kimi.ai/docs/guide/kimi-k3-quickstart).
+
 - Image deduplication is per account. Uploading identical bytes in another account
   creates a separate scan. Other accounts cannot access your scans by their IDs.
 
@@ -166,7 +207,7 @@ Provider adapters live in `server/src/providers`, wired in `index.ts`:
 
 | Interface | Implementation |
 | --- | --- |
-| `OcrProvider` | Stub (canned SMS text); LLM Whisperer planned |
+| `OcrProvider` | `LlmWhispererOcrProvider` — binary submission, bounded polling, one-time retrieval |
 | `ScamAnalyzer` | `KimiScamAnalyzer` — strict-JSON chat completion, validated locally, one stricter retry on malformed output |
 | `UrlThreatIntel` | `GoogleSafeBrowsingThreatIntel` — `MALWARE`, `SOCIAL_ENGINEERING`, `UNWANTED_SOFTWARE` lookups |
 

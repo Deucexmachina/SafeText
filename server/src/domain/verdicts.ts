@@ -57,6 +57,12 @@ export function combineScanResults(
     }
   }
 
+  // A clean URL lookup cannot compensate for a failed required check.
+  if (analysis?.verdict === "SAFE" && incomplete.length) {
+    analysis = { ...analysis, verdict: "INCONCLUSIVE", confidence: 0,
+      reasons: ["Required checks could not finish; this message cannot be confirmed safe.", ...analysis.reasons] };
+  }
+
   const state = !analysis
     ? "INCONCLUSIVE"
     : incomplete.length

@@ -70,26 +70,22 @@ export class GoogleSafeBrowsingThreatIntel implements UrlThreatIntel {
         },
       );
       assertOk(PROVIDER, r);
-      return r;
+      try { return await r.json() as unknown; }
+      catch { throw new ProviderError(PROVIDER, "returned an unreadable response"); }
     });
 
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      throw new ProviderError(PROVIDER, "returned an unreadable response", {
-        status: res.status,
-      });
-    }
-
+    const body = res;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new ProviderError(PROVIDER, "returned an invalid threat response");
     const matches = (
       body as { matches?: ThreatMatch[] }
     )?.matches;
     const byUrl = new Map<string, ThreatType>();
+    if (matches !== undefined && !Array.isArray(matches)) throw new ProviderError(PROVIDER, "returned invalid threat matches");
     if (Array.isArray(matches)) {
       for (const m of matches) {
         const url = m?.threat?.url;
         const threat = m?.threatType;
+        if (typeof url !== "string" || !THREAT_TYPES.includes(threat as ThreatType)) throw new ProviderError(PROVIDER, "returned an invalid threat match");
         if (
           typeof url === "string" &&
           THREAT_TYPES.includes(threat as ThreatType) &&

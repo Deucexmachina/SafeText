@@ -62,13 +62,14 @@ export class KimiScamAnalyzer implements ScamAnalyzer {
     this.model = opts.model ?? DEFAULT_MODEL;
     this.url = `${(opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "")}/chat/completions`;
     this.fetchImpl = opts.fetchImpl ?? fetch;
-    this.guard = new ProviderGuard(PROVIDER, opts.guard);
+    this.guard = new ProviderGuard(PROVIDER, { timeoutMs: 60_000, ...opts.guard });
   }
 
   async analyze(input: {
     text: string;
     senderId?: string | null;
   }): Promise<AnalysisResult> {
+    if (!input.text.trim()) throw new ProviderError(PROVIDER, "no readable SMS text was supplied");
     if (!this.apiKey) {
       throw new ProviderError(
         PROVIDER,
@@ -119,24 +120,21 @@ export class KimiScamAnalyzer implements ScamAnalyzer {
           model: this.model,
           // No temperature: some Kimi models (e.g. kimi-k3) only accept their
           // default value, so it is left to the server.
-          max_tokens: 800,
+          // K3 always thinks; allow room for reasoning AND the final JSON.
+          ...(this.model.startsWith("kimi-k3")
+            ? { max_completion_tokens: 8192, reasoning_effort: "low" }
+            : { max_tokens: 4096 }),
           response_format: { type: "json_object" },
           messages,
         }),
       });
       assertOk(PROVIDER, r);
-      return r;
+      try { return await r.json() as unknown; } catch { return null; }
     });
 
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      return null;
-    }
-    const content = (
-      body as { choices?: { message?: { content?: unknown } }[] }
-    )?.choices?.[0]?.message?.content;
+    const choice = (res as { choices?: { finish_reason?: string; message?: { content?: unknown; refusal?: unknown } }[] } | null)?.choices?.[0];
+    if (choice?.message?.refusal || (choice?.finish_reason && choice.finish_reason !== "stop")) return null;
+    const content = choice?.message?.content;
     return typeof content === "string" && content.trim() ? content : null;
   }
 
@@ -184,7 +182,7 @@ export function parseAnalysis(content: string): AnalysisResult | null {
   ) {
     return null;
   }
-  if (!isStringArray(o.reasons)) return null;
+  if (!isStringArray(o.reasons) || !o.reasons.length || o.reasons.some((r) => !r.trim())) return null;
 
   const e = o.entities;
   if (!e || typeof e !== "object") return null;

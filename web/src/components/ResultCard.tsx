@@ -30,11 +30,12 @@ export function ResultCard({ scan }: { scan: ScanResult }) {
         <>
           <div className="verdict verdict-inconclusive">Inconclusive</div>
           <p className="muted">
-            We couldn't read or analyze this message. Try pasting the text
-            instead.
+            {scan.incomplete.includes("extraction") ? "The screenshot could not be read. Try a clearer image or paste the SMS text." : "Message analysis could not finish. See the provider error below and try again after it is resolved."}
           </p>
         </>
       )}
+
+      {scan.error && <p className="error-box" role="alert">{scan.error}</p>}
 
       {a && (
         <>

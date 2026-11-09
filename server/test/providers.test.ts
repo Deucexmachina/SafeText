@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { KimiScamAnalyzer } from "../src/providers/analyzer/KimiScamAnalyzer.js";
+import { KimiScamAnalyzer, parseAnalysis } from "../src/providers/analyzer/KimiScamAnalyzer.js";
 import { GoogleSafeBrowsingThreatIntel } from "../src/providers/threatintel/GoogleSafeBrowsingThreatIntel.js";
 import { ProviderError } from "../src/providers/resilience.js";
 import { combineScanResults } from "../src/domain/verdicts.js";
@@ -165,6 +165,32 @@ test("Kimi: missing API key fails with a clear, non-retryable error", async () =
   assert.equal(calls, 0);
 });
 
+test("Kimi K3 request leaves reasoning headroom and rejects refused/truncated output", async () => {
+  let calls = 0;
+  const analyzer = new KimiScamAnalyzer({ apiKey: "test", guard: FAST, fetchImpl: async (_url, init) => {
+    calls++;
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.max_completion_tokens, 8192); assert.equal(request.reasoning_effort, "low");
+    assert.equal(request.max_tokens, undefined);
+    return Response.json({ choices: [{ finish_reason: calls === 1 ? "length" : "stop", message: { content: JSON.stringify(VALID_KIMI), refusal: calls === 2 ? "refused" : null } }] });
+  } });
+  await assert.rejects(() => analyzer.analyze({ text: "SMS" }), /malformed JSON/);
+  assert.equal(calls, 2);
+});
+
+test("CT-02: invalid verdict schema is rejected locally", () => {
+  for (const value of [{ ...VALID_KIMI, confidence: -1 }, { ...VALID_KIMI, reasons: [] }, { ...VALID_KIMI, entities: { urls: [] } }, { ...VALID_KIMI, verdict: "unknown" }]) {
+    assert.equal(parseAnalysis(JSON.stringify(value)), null);
+  }
+});
+
+test("Google malformed response must not be treated as a clean URL check", async () => {
+  for (const response of [null, [], { matches: "invalid" }, { matches: [{ threatType: "unknown" }] }]) {
+    const intel = new GoogleSafeBrowsingThreatIntel({ apiKey: "test", guard: FAST, fetchImpl: async () => Response.json(response) });
+    await assert.rejects(() => intel.lookup(["https://example.com"]), ProviderError);
+  }
+});
+
 test("Google: flagged URL maps to its threat type, clean URLs stay null", async () => {
   const fetchImpl: typeof fetch = async (url, init) => {
     assert.match(String(url), /threatMatches:find\?key=test-key$/);
@@ -281,7 +307,7 @@ test("pipeline: Google failure + Kimi success is PARTIAL", () => {
   const r = combineScanResults(SAFE_ANALYSIS, null, "hi", null);
   assert.equal(r.state, "PARTIAL");
   assert.deepEqual(r.incomplete, ["threat_intel"]);
-  assert.equal(r.analysis?.verdict, "SAFE");
+  assert.equal(r.analysis?.verdict, "INCONCLUSIVE");
 });
 
 test("pipeline: both providers failing is INCONCLUSIVE", () => {

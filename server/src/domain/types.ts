@@ -50,6 +50,8 @@ export interface OcrResult {
 }
 
 export interface ScanResultDto {
+  progress: "QUEUED" | "EXTRACTING" | "ANALYZING" | null;
+  error: string | null;
   scanId: string;
   status: ScanStatus;
   extraction: { text: string } | null;
