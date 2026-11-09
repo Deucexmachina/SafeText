@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError, deleteScan, listScans, type ScanSummary } from "../api";
 import { VerdictBadge } from "../components/VerdictBadge";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 
 const PAGE_SIZE = 5;
 
@@ -11,10 +12,11 @@ export function HistoryPage() {
   const [page, setPage] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ScanSummary | null>(null);
   const nav = useNavigate();
 
   const removeScan = async (scan: ScanSummary) => {
-    if (deletingId || !window.confirm("Delete this scan from your history? This cannot be undone.")) return;
+    if (deletingId) return;
     setDeletingId(scan.scanId);
     setDeleteError(null);
     try {
@@ -24,6 +26,7 @@ export function HistoryPage() {
       setDeleteError(e instanceof ApiError ? e.detail : "Couldn't delete this scan. Please try again.");
     } finally {
       setDeletingId(null);
+      setPendingDelete(null);
     }
   };
 
@@ -51,6 +54,12 @@ export function HistoryPage() {
 
   return (
     <div className="card table-card">
+      {pendingDelete && <ConfirmDialog
+        title="Delete this scan?"
+        message="This scan will be permanently removed from your history. This action cannot be undone."
+        confirmLabel="Delete scan" busyLabel="Deleting..." danger busy={deletingId !== null}
+        onCancel={() => setPendingDelete(null)} onConfirm={() => void removeScan(pendingDelete)}
+      />}
       {deleteError && <p className="error-box" role="alert">{deleteError}</p>}
       <table className="history-table">
         <thead>
@@ -86,7 +95,7 @@ export function HistoryPage() {
                   title="Delete scan"
                   disabled={deletingId !== null}
                   aria-busy={deletingId === s.scanId}
-                  onClick={event => { event.stopPropagation(); void removeScan(s); }}
+                  onClick={event => { event.stopPropagation(); setPendingDelete(s); }}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
