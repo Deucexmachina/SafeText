@@ -104,7 +104,8 @@ for (const action of ["register", "login"] as const) {
         const { rows } = await pool.query<User & { password_hash: string; disabled: boolean }>("SELECT id, email, role, disabled, password_hash FROM users WHERE email = $1", [email]);
         // Perform the expensive derivation even for unknown accounts.
         const valid = await verifyPassword(password, rows[0]?.password_hash ?? `${"0".repeat(32)}:${"0".repeat(128)}`);
-        if (!rows[0] || !valid || rows[0].disabled) throw new HttpError(401, "Login failed", "Email or password is incorrect or the account is unavailable.");
+        if (!rows[0] || !valid) throw new HttpError(401, "Login failed", "Email or password is incorrect.");
+        if (rows[0].disabled) throw new HttpError(403, "Account disabled", "Your account is disabled. Please contact the administrator for assistance.");
         user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
       }
       const token = randomBytes(32).toString("hex");

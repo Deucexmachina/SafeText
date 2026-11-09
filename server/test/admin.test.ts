@@ -60,7 +60,13 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
       assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { role: 'admin', disabled: false }, operator.cookie)).status, 400);
       assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true }, operator.cookie)).status, 200);
       assert.equal((await call('/auth/me', 'GET', undefined, regular.cookie)).status, 401);
-      assert.equal((await call('/auth/login', 'POST', { email: 'regular@example.com', password })).status, 401);
+      const disabledLogin = await call('/auth/login', 'POST', { email: 'regular@example.com', password });
+      assert.equal(disabledLogin.status, 403);
+      assert.match((await disabledLogin.json() as { detail: string }).detail, /Your account is disabled/);
+      assert.equal(disabledLogin.headers.get('set-cookie'), null);
+      const wrongPassword = await call('/auth/login', 'POST', { email: 'regular@example.com', password: 'incorrect password 123' });
+      assert.equal(wrongPassword.status, 401);
+      assert.doesNotMatch((await wrongPassword.json() as { detail: string }).detail, /disabled/);
       assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: false }, operator.cookie)).status, 200);
       assert.equal((await call('/auth/me', 'GET', undefined, regular.cookie)).status, 401);
       assert.equal((await call('/auth/login', 'POST', { email: 'regular@example.com', password })).status, 200);
