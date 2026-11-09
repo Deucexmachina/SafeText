@@ -1,4 +1,4 @@
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { ScanPage } from "./pages/ScanPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ScanDetailPage } from "./pages/ScanDetailPage";
@@ -45,7 +45,7 @@ export default function App() {
           <Route path="/" element={<ScanPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/scan/:id" element={<ScanDetailPage />} />
-          <Route path="/admin" element={user.role === 'admin' ? <AdminPage /> : <p role="alert" className="error-box">Administrator access is required.</p>} />
+          <Route path="/admin" element={user.role === 'admin' ? <AdminPage /> : <Navigate to="/" replace />} />
         </Routes>}
       </main>
     </BrowserRouter>
