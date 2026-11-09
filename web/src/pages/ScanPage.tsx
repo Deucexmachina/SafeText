@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { ApiError, submitImage, submitText } from "../api";
 import { useScan } from "../useScan";
 import { ResultCard } from "../components/ResultCard";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { IMAGE_ACCEPT, IMAGE_HELP, validateScreenshot } from "../imageValidation";
 
 export function ScanPage() {
   const [text, setText] = useState("");
@@ -9,24 +11,44 @@ export function ScanPage() {
   const [scanId, setScanId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [validatingImage, setValidatingImage] = useState(false);
+  const selection = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const { scan, error: scanError } = useScan(scanId);
 
   const clearFile = () => {
+    selection.current++;
+    setValidatingImage(false);
     setFile(null);
     if (fileRef.current) fileRef.current.value = "";
   };
 
+  const chooseFile = async (candidate: File | null) => {
+    clearFile();
+    setError(null);
+    setImageError(null);
+    if (!candidate) return;
+    const request = selection.current;
+    setValidatingImage(true);
+    try {
+      const valid = await validateScreenshot(candidate);
+      if (request === selection.current) setFile(valid);
+    } catch (e) {
+      if (request === selection.current) setImageError(e instanceof Error ? e.message : "This image could not be read. Choose another screenshot.");
+    } finally {
+      if (request === selection.current) setValidatingImage(false);
+    }
+  };
+
   const submit = async () => {
+    if (validatingImage || submitting || imageError) return;
     setError(null);
     if (file && text.trim()) {
       setError("Choose one input: remove the screenshot or clear the pasted text. Neither has been submitted.");
       return;
     }
     if (text.length > 10_000) { setError("SMS text must be at most 10,000 characters."); return; }
-    if (file && (file.size > 8 * 1024 * 1024 || !["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp", "image/tiff"].includes(file.type))) {
-      setError("Choose a PNG, JPEG, WEBP, GIF, BMP or TIFF screenshot up to 8 MB."); return;
-    }
     if (!file && !text.trim()) {
       setError("Paste a message or choose a screenshot first.");
       return;
@@ -36,6 +58,11 @@ export function ScanPage() {
       const r = file ? await submitImage(file) : await submitText(text.trim());
       setScanId(r.scanId);
     } catch (e) {
+      if (file && e instanceof ApiError && [400, 413, 415].includes(e.status)) {
+        setImageError(e.detail);
+        clearFile();
+        return;
+      }
       setError(
         e instanceof ApiError
           ? e.detail
@@ -70,6 +97,9 @@ export function ScanPage() {
 
   return (
     <div className="card">
+      {imageError && <ConfirmDialog mode="error" title="Image not accepted" message={imageError}
+        confirmLabel="Got it" busyLabel="" busy={false}
+        onConfirm={() => setImageError(null)} onCancel={() => setImageError(null)} />}
       <label className="field-label" htmlFor="msg">
         Paste the SMS message
       </label>
@@ -90,9 +120,11 @@ export function ScanPage() {
           ref={fileRef}
           id="shot"
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/tiff"
+          accept={IMAGE_ACCEPT}
+          aria-describedby="image-requirements"
+          disabled={submitting}
           className="visually-hidden"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => void chooseFile(e.target.files?.[0] ?? null)}
         />
         <label htmlFor="shot" className="btn-file">
           Choose image
@@ -106,15 +138,17 @@ export function ScanPage() {
           </span>
         )}
       </div>
+      <p id="image-requirements" className="hint">{IMAGE_HELP}</p>
+      {validatingImage && <p className="hint" role="status">Checking image...</p>}
       {file && (
         <p className="hint">
-          The screenshot will be read using OCR. Submit either text or an image; clear the other input first. Maximum image size: 8 MB.
+          The screenshot will be read for its SMS text. Submit either text or an image; clear the other input first.
         </p>
       )}
 
       {error && <p className="error-box">{error}</p>}
 
-      <button className="btn-primary" onClick={submit} disabled={submitting}>
+      <button className="btn-primary" onClick={submit} disabled={submitting || validatingImage}>
         {submitting ? "Sending…" : "Check message"}
       </button>
     </div>
