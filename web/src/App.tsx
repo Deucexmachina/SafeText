@@ -1,4 +1,4 @@
-import { BrowserRouter, Link, NavLink, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { ScanPage } from "./pages/ScanPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ScanDetailPage } from "./pages/ScanDetailPage";
@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ApiError, currentUser, logout, type User } from "./api";
 import { AuthPage } from "./pages/AuthPage";
 import { AdminPage } from "./pages/AdminPage";
+import { NavigationMenu } from "./components/NavigationMenu";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -34,26 +35,7 @@ export default function App() {
           <Link to="/" className="wordmark">
             SafeText
           </Link>
-          {user && <nav>
-            <NavLink
-              to="/"
-              end
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
-            >
-              Scan
-            </NavLink>
-            <NavLink
-              to="/history"
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
-            >
-              History
-            </NavLink>
-            {user.role === 'admin' && <NavLink to="/admin" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Admin</NavLink>}
-          </nav>}
+          {user && <NavigationMenu key={user.id} isAdmin={user.role === "admin"} />}
           {user && <div className="account"><span>{user.email}</span><button className="link-btn" onClick={signOut}>Log out</button></div>}
         </div>
       </header>

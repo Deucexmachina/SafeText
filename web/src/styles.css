@@ -15,6 +15,12 @@
 .auth-card { max-width: 440px; margin: 32px auto; }
 .auth-card h1 { font-size: 24px; margin-top: 0; }
 .auth-card input { width: 100%; border: 1px solid var(--border); border-radius: 5px; padding: 10px; font: inherit; margin-bottom: 16px; }
+.password-field { position: relative; margin-bottom: 16px; }
+.auth-card .password-field input { padding-right: 46px; margin-bottom: 0; }
+.password-toggle { position: absolute; top: 0; right: 3px; height: 100%; width: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.password-toggle:hover { color: var(--accent); }
+.password-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.password-toggle:disabled { opacity: 0.5; cursor: default; }
 .auth-toggle { margin-top: 20px; }
 .account { margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; overflow-wrap: anywhere; }
 .topbar-inner { flex-wrap: wrap; }
@@ -51,7 +57,7 @@ body {
   margin: 0 auto;
   padding: 10px 16px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 22px;
 }
 
@@ -62,10 +68,15 @@ body {
   text-decoration: none;
 }
 
-.topbar nav {
-  display: flex;
-  gap: 16px;
-}
+.navigation-menu { position: relative; }
+.navigation-toggle { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--accent); cursor: pointer; }
+.navigation-toggle:hover { background: var(--bg); }
+.navigation-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.navigation-links { position: absolute; top: calc(100% + 8px); left: 0; min-width: 160px; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); box-shadow: 0 6px 18px #00000014; z-index: 20; }
+.navigation-links[hidden] { display: none; }
+.navigation-links .nav-link { display: block; padding: 9px 12px; border-bottom: 0; border-radius: 4px; }
+.navigation-links .nav-link:hover { background: var(--bg); }
+.navigation-links .nav-link.active { color: var(--accent); background: #edf6ef; font-weight: 600; }
 
 .nav-link {
   color: var(--muted);
