@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { processScan } from "../src/queue/scanQueue.js";
 import type { ScanRow, FinalResult } from "../src/db/scans.js";
-import type { AnalysisResult } from "../src/domain/types.js";
+import type { AnalysisResult, ThreatIntelResult } from "../src/domain/types.js";
 import { LlmWhispererOcrProvider } from "../src/providers/ocr/LlmWhispererOcrProvider.js";
 import { ProviderError } from "../src/providers/resilience.js";
 
@@ -21,7 +21,7 @@ function harness(inputType: "text" | "image", text = "  Pay now https://example.
     saveResult: async (_id: string, result: FinalResult) => { final = result; row.image_bytes = null; },
     ocr: { extract: async () => { ocrCalls++; return { text, senderId: null, confidence: 0 }; } },
     analyzer: { analyze: async (input: { text: string }) => { assert.equal(row.image_bytes, null); analyzed.push(input.text); return analysis; } },
-    threatIntel: { lookup: async (urls: string[]) => { links.push(urls); return { urls: urls.map(url => ({ url, threat: null })) }; } },
+    threatIntel: { lookup: async (urls: string[]): Promise<ThreatIntelResult> => { links.push(urls); return { urls: urls.map(url => ({ url, threat: null })) }; } },
   };
   return { row, deps, analyzed, links, get final() { return final; }, get ocrCalls() { return ocrCalls; } };
 }
@@ -32,6 +32,20 @@ test("IT-01: pasted SMS skips OCR and uses normalized text", async () => {
   assert.equal(h.ocrCalls, 0);
   assert.deepEqual(h.analyzed, ["Pay now https://example.com"]);
   assert.equal(h.final?.state, "COMPLETE");
+});
+
+test('oversized Kimi output is incomplete and preserves local URL threat fallback', async () => {
+  const h = harness('text');
+  h.deps.analyzer.analyze = async () => ({ ...analysis, reasons: ['x'.repeat(70000)] });
+  h.deps.threatIntel.lookup = async urls => {
+    h.links.push(urls);
+    return { urls: urls.map(url => ({ url, threat: 'SOCIAL_ENGINEERING' as const })) };
+  };
+  await processScan('test', h.deps);
+  assert.deepEqual(h.links, [['https://example.com']]);
+  assert.equal(h.final?.state, 'PARTIAL');
+  assert.equal(h.final?.analysis?.verdict, 'MALICIOUS');
+  assert(h.final?.incomplete.includes('analysis'));
 });
 
 test("CT-01/IT-01: screenshot binary submit -> poll -> one-time retrieve -> persisted text -> analysis", async () => {

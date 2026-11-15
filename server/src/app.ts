@@ -3,6 +3,7 @@ import multer from "multer";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
+import { maintainStorage } from './db/retention.js';
 import { scansRouter } from "./http/routes/scans.js";
 import { HttpError, sendProblem } from "./http/problem.js";
 import { authRouter, checkOrigin, requireAuth } from "./http/auth.js";
@@ -26,6 +27,10 @@ export function createApp() {
   });
   app.use(express.json({ limit: "64kb" }));
   app.use("/api/v1", checkOrigin);
+  app.use('/api/v1', (req, _res, next) => {
+    if (req.path === '/health') return next();
+    void maintainStorage().then(() => next(), next);
+  });
 
   app.get("/api/v1/health", (_req, res) => res.json({ status: "ok" }));
   app.use("/api/v1/auth", authRouter);

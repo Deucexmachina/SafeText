@@ -59,3 +59,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS scans_user_image_hash_key
 CREATE INDEX IF NOT EXISTS scans_user_created_idx ON scans(user_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS scans_created_at_idx ON scans (created_at DESC);
+CREATE INDEX IF NOT EXISTS scans_state_updated_idx ON scans(state, updated_at);
+CREATE INDEX IF NOT EXISTS sessions_user_expiry_idx ON sessions(user_id, expires_at DESC);
+CREATE INDEX IF NOT EXISTS auth_attempts_window_idx ON auth_attempts(window_start);
+CREATE INDEX IF NOT EXISTS admin_audit_created_idx ON admin_audit(created_at);

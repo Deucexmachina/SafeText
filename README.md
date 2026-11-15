@@ -204,11 +204,45 @@ This is a targeted code review and regression suite, not a penetration-test cert
   checks and 8 MB upload limits remain in place. Unknown request/worker errors
   do not log raw message bodies, provider response bodies or connection secrets.
 - Account disabling does not recall requests already sent to providers. No
-  email verification, password recovery, MFA, admin reauthentication, automatic
-  message retention policy or encrypted application storage has been added.
+  email verification, password recovery, MFA, admin reauthentication, or encrypted
+  application storage has been added.
   Use a strong unique admin password; configure backups/storage encryption and
   operational monitoring before exposing the app publicly. Audit dependencies
   regularly; a clean audit is a point-in-time advisory check.
+
+## Storage retention and limits
+
+Finished scan history expires after 30 days by default. The oldest finished scans
+are removed sooner to admit new scans at a cap of 100 scans per account or 1,000
+overall. Active scans are protected from capacity eviction; submissions return
+429 when capacity cannot be freed. Screenshot bytes are discarded after extraction
+or failure, and pending screenshot data is capped at 32 MiB across the database.
+Abandoned jobs older than 24 hours become inconclusive and release their image data.
+Browser result/history queries do not fetch screenshot bytes from PostgreSQL.
+
+Cleanup runs at startup and on the first non-health API request after an hour,
+without a timer or cron job. While the app sleeps, cleanup waits until it wakes.
+It removes expired sessions, login-throttle entries older than a day, and audit
+entries older than 90 days. Each account has at most five sessions; a new login
+can sign out the oldest device. Registration stops at 500 accounts; existing
+accounts and passwords are never deleted by retention.
+
+Configure `SCAN_RETENTION_DAYS`, `MAX_SCANS_PER_USER`, `MAX_STORED_SCANS`,
+`MAX_PENDING_IMAGE_MB`, `AUDIT_RETENTION_DAYS`, and `MAX_ACCOUNTS` in the server
+environment. Defaults are in `server/.env.example` and `render.yaml`; all must be
+positive integers. Cleanup permanently deletes eligible records when enabled
+code runs, including existing history. History displays the configured policy.
+Saved extraction is limited to 10,000 characters. Each provider stage allows
+24 KiB of result JSON, with a final persistence guard of 64 KiB per scan.
+Oversized results disclose incomplete stages and preserve URL threat fallback;
+confirmed URL threats still contribute a malicious verdict.
+
+These controls bound normal application data, not Neon billing or total physical
+storage. Indexes, dead tuples, database overhead, restore history, and other
+projects/branches consume space too. Deletion allows PostgreSQL autovacuum to
+reuse space; it does not immediately shrink the database or remove provider backups.
+Monitor the Neon Storage/Compute and Render Usage dashboards. Do not run
+`VACUUM FULL` as routine cleanup or add keep-alive pings to prevent free-tier sleep.
 
 Security references: [OWASP authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
 and [session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

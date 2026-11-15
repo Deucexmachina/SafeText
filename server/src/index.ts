@@ -3,9 +3,11 @@ import { config } from "./config.js";
 import { migrate } from "./db/migrate.js";
 import { resetStuckScans } from "./db/scans.js";
 import { enqueueScan } from "./queue/scanQueue.js";
+import { maintainStorage } from './db/retention.js';
 
 async function main() {
   await migrate();
+  await maintainStorage();
 
   // Re-queue any scans left mid-flight by a previous shutdown.
   for (const id of await resetStuckScans()) enqueueScan(id);

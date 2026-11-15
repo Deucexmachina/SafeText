@@ -11,6 +11,12 @@ export function normalizeText(text: string): string {
 function safeError(err: unknown, fallback: string): string {
   return err instanceof ProviderError ? err.message : fallback;
 }
+function boundedProviderResult<T>(provider: string, result: T): T {
+  if (Buffer.byteLength(JSON.stringify(result), 'utf8') > 24 * 1024) {
+    throw new ProviderError(provider, 'the result exceeded storage limits; try a shorter message');
+  }
+  return result;
+}
 
 // In-process FIFO queue. QUEUED -> EXTRACTING -> ANALYZING -> terminal.
 const pending: string[] = [];
@@ -64,6 +70,7 @@ export async function processScan(id: string, dependencies = services): Promise<
     }
     // Persist one-time OCR output immediately, including empty output, and
     // release screenshot bytes before any analysis or validation can fail.
+    if (text.length > 10_000) throw new ProviderError("Text extraction", "message exceeds 10,000 characters; crop the screenshot to the SMS");
     await saveExtraction(id, text, senderId);
     row.image_bytes = null;
     text = normalizeText(text);
@@ -83,11 +90,11 @@ export async function processScan(id: string, dependencies = services): Promise<
   }
 
   // ANALYZING (saveExtraction already moved the state to ANALYZING)
-  const [aRes] = await Promise.allSettled([analyzer.analyze({ text, senderId })]);
+  const [aRes] = await Promise.allSettled([analyzer.analyze({ text, senderId }).then(result => boundedProviderResult('Kimi', result))]);
   // Merge local candidates with model entities; local extraction keeps link
   // checking available even if Kimi fails or omits a URL.
   const urls = [...new Set([...extractUrls(text), ...(aRes.status === "fulfilled" ? aRes.value.entities.urls : [])])];
-  const [tRes] = await Promise.allSettled([threatIntel.lookup(urls)]);
+  const [tRes] = await Promise.allSettled([threatIntel.lookup(urls).then(result => boundedProviderResult('Google Safe Browsing', result))]);
 
   const { state, analysis, threatIntel: intel, incomplete } =
     combineScanResults(

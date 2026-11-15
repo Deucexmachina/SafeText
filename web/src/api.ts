@@ -93,7 +93,11 @@ export function getScan(id: string) {
 }
 
 export function listScans() {
-  return request<{ scans: ScanSummary[] }>("/api/v1/scans");
+  return request<{ scans: ScanSummary[] }>("/api/v1/scans?limit=100");
+}
+
+export function storagePolicy() {
+  return request<{ scanRetentionDays: number; maxScansPerUser: number }>('/api/v1/storage-policy');
 }
 
 export function deleteScan(id: string) {

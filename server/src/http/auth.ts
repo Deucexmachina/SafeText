@@ -94,12 +94,21 @@ for (const action of ["register", "login"] as const) {
       let user: User;
       if (action === "register") {
         const hash = await hashPassword(password);
-        const { rows } = await pool.query<User>(
+        const client = await pool.connect();
+        try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(1935763002)');
+        const { rows: [capacity] } = await client.query<{ count: number }>('SELECT count(*)::int AS count FROM users');
+        if (capacity.count >= config.maxAccounts) throw new HttpError(503, 'Registration full', 'This project has reached its account limit. Contact the administrator.');
+        const { rows } = await client.query<User>(
           "INSERT INTO users(id, email, password_hash) VALUES($1, $2, $3) ON CONFLICT(email) DO NOTHING RETURNING id, email, role",
           [randomUUID(), email, hash],
         );
         if (!rows[0]) throw new HttpError(409, "Account unavailable", "An account with that email already exists. Please log in.");
         user = rows[0];
+        await client.query('COMMIT');
+        } catch (err) { await client.query('ROLLBACK'); throw err; }
+        finally { client.release(); }
       } else {
         const { rows } = await pool.query<User & { password_hash: string; disabled: boolean }>("SELECT id, email, role, disabled, password_hash FROM users WHERE email = $1", [email]);
         // Perform the expensive derivation even for unknown accounts.
@@ -109,9 +118,19 @@ for (const action of ["register", "login"] as const) {
         user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
       }
       const token = randomBytes(32).toString("hex");
-      await pool.query("DELETE FROM sessions WHERE token_hash = $1 OR expires_at <= now()", [tokenHash(req)]);
-      await pool.query("INSERT INTO sessions(token_hash, user_id, expires_at) VALUES($1, $2, $3)",
+      const client = await pool.connect();
+      try {
+      await client.query('BEGIN');
+      // Serialize session issuance for this account and retain at most five devices.
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [user.id]);
+      await client.query("DELETE FROM sessions WHERE token_hash = $1 OR expires_at <= now()", [tokenHash(req)]);
+      await client.query(`DELETE FROM sessions WHERE token_hash IN (
+        SELECT token_hash FROM sessions WHERE user_id = $1 ORDER BY expires_at DESC, token_hash DESC OFFSET 4)`, [user.id]);
+      await client.query("INSERT INTO sessions(token_hash, user_id, expires_at) VALUES($1, $2, $3)",
         [createHash("sha256").update(token).digest("hex"), user.id, new Date(Date.now() + lifetime)]);
+      await client.query('COMMIT');
+      } catch (err) { await client.query('ROLLBACK'); throw err; }
+      finally { client.release(); }
       res.cookie(cookieName, token, { ...cookieOptions, maxAge: lifetime });
       res.status(action === "register" ? 201 : 200).json({ user });
     } catch (err) { next(err); }

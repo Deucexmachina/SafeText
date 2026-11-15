@@ -11,10 +11,15 @@ import type {
 import { pool } from "./pool.js";
 import type { PoolClient } from 'pg';
 import { HttpError } from '../http/problem.js';
+import { reserveScanStorage, scanAdmissionLock } from './retention.js';
+
+// Browser results/history never need screenshot bytes. Avoid transferring queued images from Neon.
+const publicColumns = `id, state, input_type, input_text, image_hash, image_mime, NULL::bytea AS image_bytes,
+  extracted_text, extraction_source, sender_id, analysis, threat_intel, incomplete, error, created_at, updated_at`;
 
 async function checkScanCapacity(client: PoolClient, userId: string): Promise<void> {
   // All admissions share this transaction lock, avoiding check/insert races.
-  await client.query('SELECT pg_advisory_xact_lock(1935763001)');
+  await client.query('SELECT pg_advisory_xact_lock($1)', [scanAdmissionLock]);
   const { rows } = await client.query<{ total: number; owned: number }>(
     `SELECT count(*)::int AS total, count(*) FILTER (WHERE user_id = $1)::int AS owned
      FROM scans WHERE state IN ('QUEUED', 'EXTRACTING', 'ANALYZING')`, [userId]);
@@ -55,6 +60,7 @@ export async function createScan(scan: NewScan): Promise<void> {
   try {
   await client.query('BEGIN');
   await checkScanCapacity(client, scan.userId);
+  await reserveScanStorage(client, scan.userId, scan.imageBytes?.length ?? 0, true);
   await client.query(
     `INSERT INTO scans (id, input_type, input_text, image_hash, image_mime, image_bytes, user_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -104,6 +110,7 @@ export async function retryImageScan(id: string, bytes: Buffer): Promise<boolean
         (state = 'COMPLETE' AND extraction_source IS DISTINCT FROM 'llmwhisperer_v2')) RETURNING id`,
     [id, bytes],
   );
+  await reserveScanStorage(client, candidate.rows[0].user_id, 0, false);
   await client.query('COMMIT');
   return !!result.rowCount;
   } catch (err) { await client.query('ROLLBACK'); throw err; }
@@ -118,7 +125,7 @@ export async function getScan(id: string): Promise<ScanRow | null> {
 }
 
 export async function getUserScan(id: string, userId: string): Promise<ScanRow | null> {
-  const { rows } = await pool.query<ScanRow>("SELECT * FROM scans WHERE id = $1 AND user_id = $2", [id, userId]);
+  const { rows } = await pool.query<ScanRow>(`SELECT ${publicColumns} FROM scans WHERE id = $1 AND user_id = $2`, [id, userId]);
   return rows[0] ?? null;
 }
 
@@ -129,7 +136,7 @@ export async function deleteUserScan(id: string, userId: string): Promise<boolea
 
 export async function listScans(limit: number, userId: string): Promise<ScanRow[]> {
   const { rows } = await pool.query<ScanRow>(
-    `SELECT * FROM scans WHERE user_id = $2 ORDER BY created_at DESC LIMIT $1`,
+    `SELECT ${publicColumns} FROM scans WHERE user_id = $2 ORDER BY created_at DESC LIMIT $1`,
     [limit, userId],
   );
   return rows;
@@ -147,6 +154,7 @@ export async function saveExtraction(
   text: string,
   senderId: string | null,
 ): Promise<void> {
+  if (text.length > 10000 || (senderId?.length ?? 0) > 512) throw new Error('Extraction exceeds storage limits.');
   await pool.query(
     `UPDATE scans
        SET extracted_text = $2, sender_id = $3, image_bytes = NULL,
@@ -166,6 +174,18 @@ export interface FinalResult {
 }
 
 export async function saveResult(id: string, r: FinalResult): Promise<void> {
+  // Reject an oversized provider result rather than persisting an unbounded payload.
+  if (Buffer.byteLength(JSON.stringify([r.analysis, r.threatIntel]), 'utf8') > 64 * 1024) {
+    const flagged = r.threatIntel?.urls.find(url => url.threat);
+    const evidence = flagged && Buffer.byteLength(JSON.stringify(flagged), 'utf8') < 48 * 1024 ? flagged : null;
+    r = { state: evidence ? 'PARTIAL' : 'INCONCLUSIVE',
+      analysis: evidence ? { verdict: 'MALICIOUS', confidence: 90,
+        reasons: ['A URL was flagged by Google Safe Browsing. The full provider result was too large to retain.'],
+        entities: { senderId: null, urls: [], phoneNumbers: [] } } : null,
+      threatIntel: evidence ? { urls: [evidence] } : null,
+      incomplete: [...new Set<Stage>([...r.incomplete, 'analysis', 'threat_intel'])],
+      error: 'The provider result exceeded storage limits. Try a shorter message.' };
+  }
   await pool.query(
     `UPDATE scans
        SET state = $2, analysis = $3, threat_intel = $4, incomplete = $5,
@@ -177,7 +197,7 @@ export async function saveResult(id: string, r: FinalResult): Promise<void> {
       r.analysis ? JSON.stringify(r.analysis) : null,
       r.threatIntel ? JSON.stringify(r.threatIntel) : null,
       JSON.stringify(r.incomplete),
-      r.error ?? null,
+      r.error?.slice(0, 1000) ?? null,
     ],
   );
 }

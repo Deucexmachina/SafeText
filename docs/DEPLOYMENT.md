@@ -71,18 +71,18 @@ local accounts and scans do not automatically move to Neon.
    Include the deployment files, updated server files, root `package.json`,
    workflow, and README. Stage only intended project changes. Do not stage
    `.env`, credentials, or unrelated changes.
-2. Choose the branch name at the lower left and **Create new branch**, named
-   `chore/render-deployment`.
-3. Commit with `ci: verify production deployment and configure Render`, then
-   choose **Publish Branch**.
-4. On [the GitHub repository](https://github.com/Deucexmachina/SafeText), open a
-   pull request from that branch into `main`. On its **Checks** tab, wait for
+2. Your current small-project workflow can push directly to `main`. Commit with
+   `feat: bound stored scan history and document deployment`, then choose **Push**
+   or **Sync Changes**. Review incoming changes first if VS Code indicates any.
+3. On [the GitHub repository](https://github.com/Deucexmachina/SafeText), open
+   **Actions > CI** for the latest `main` commit. Wait for
    **Build and test (Node 22)**, **Build and test (Node 24)**, and
    **SafeText required checks** to pass.
-5. Configure protection below, then merge the pull request after checks pass.
-   Confirm the resulting `main` commit also passes CI before the first deployment.
+4. Continue with Neon and Render below. The optional branch protection section
+   can be skipped. Render's **After CI Checks Pass** setting works with direct
+   pushes to `main`; branch protection is not required for it.
 
-## Protect main on GitHub
+## Optional protection for main on GitHub
 
 The warning refers to repository settings. A workflow file by itself does not
 protect `main`. GitHub Actions runs after GitHub receives a push; the protection
@@ -172,6 +172,18 @@ Use either the manual steps here or the Blueprint option below, once.
    | `KIMI_MODEL` | `kimi-k3`, the current app default, or an API model your account supports |
    | `GOOGLE_SAFE_BROWSING_API_KEY` | Your key for the Safe Browsing v4 API |
 
+   Retention limits already have defaults in code. You can explicitly add these
+   variables to Render to make them easy to adjust later:
+
+   | Key | Default |
+   | --- | --- |
+   | `SCAN_RETENTION_DAYS` | `30` |
+   | `MAX_SCANS_PER_USER` | `100` |
+   | `MAX_STORED_SCANS` | `1000` |
+   | `MAX_PENDING_IMAGE_MB` | `32` |
+   | `AUDIT_RETENTION_DAYS` | `90` |
+   | `MAX_ACCOUNTS` | `500` |
+
    Leave `PORT` unset; Render supplies it. The build explicitly installs development
    dependencies because TypeScript and Vite are needed to compile the app.
    If the final hostname is only shown after creation, update `APP_ORIGIN` to that
@@ -221,10 +233,39 @@ proxies before wider campus use; do not enable unrestricted `trust proxy`.
 6. Open the service shortly before a class demo and allow time for a cold start.
    Free hosting does not guarantee the proposal's 60-second scan target.
 
-For later updates: create a branch, commit, push, open a pull request, wait for
-checks and review, then merge. GitHub checks the `main` commit and Render deploys
-it automatically when its checks pass. No Render API key or deploy hook needs
+For later updates: commit and push to `main`, then check **GitHub > Actions**.
+Render deploys the commit automatically when its checks pass. No Render API key or deploy hook needs
 to be placed in GitHub Actions for this setup.
+
+## Automatic storage management
+
+Finished scans expire after 30 days. New submissions can remove the oldest
+finished scans sooner to stay within 100 scans per user and 1,000 overall.
+Active work is preserved; when capacity cannot be freed, the app returns a clear
+429 error. Deleted scan history is permanent, including old history that existed
+before this update. Users see the policy on History.
+
+Screenshot data has a 32 MiB aggregate database budget while waiting for OCR.
+It is removed after extraction/failure. Abandoned jobs older than 24 hours are
+marked inconclusive and release their screenshots. Extraction and provider result
+sizes are bounded. Browser polling and History never retrieve image bytes from Neon.
+This budget does not cap all runtime memory or provider charges.
+
+Expired sessions and login-throttle records older than a day are removed;
+audit events expire after 90 days. Login retains up to five sessions per account.
+Registration stops at 500 accounts; retention never deletes accounts automatically.
+
+Cleanup runs at startup and on normal API traffic, at most once per hour.
+No cron service or idle database wakeup is needed; when Render sleeps, cleanup
+waits for the next startup/request. Existing cleanup-eligible data is removed on
+the first run. Reducing limits can remove more history after redeployment.
+
+In Neon, review **Storage** and **Compute** usage periodically; in Render review
+**Usage/Billing**. Stay on the Free plans and avoid creating unused database
+branches/projects. Deleted rows free reusable database space through autovacuum;
+physical size and restore history may not drop immediately. Do not disable TLS
+or run `VACUUM FULL` as a routine fix. These application limits leave headroom
+but do not guarantee that hosting quotas or API budgets can never be exceeded.
 
 ## Give the chosen account admin access
 

@@ -13,7 +13,21 @@ if (process.env.NODE_ENV === 'production') {
   if (!validDatabase) throw new Error('Production requires DATABASE_URL with non-default database credentials.');
 }
 
+function positiveInteger(name: string, fallback: number, maximum: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
+    throw new Error(`${name} must be a positive integer no greater than ${maximum}.`);
+  }
+  return value;
+}
+
 export const config = {
+  scanRetentionDays: positiveInteger('SCAN_RETENTION_DAYS', 30, 3650),
+  maxScansPerUser: positiveInteger('MAX_SCANS_PER_USER', 100, 100000),
+  maxStoredScans: positiveInteger('MAX_STORED_SCANS', 1000, 1000000),
+  maxPendingImageMb: positiveInteger('MAX_PENDING_IMAGE_MB', 32, 1024),
+  auditRetentionDays: positiveInteger('AUDIT_RETENTION_DAYS', 90, 3650),
+  maxAccounts: positiveInteger('MAX_ACCOUNTS', 500, 100000),
   serveWeb: process.env.SERVE_WEB === "true",
   port: Number(process.env.PORT ?? 3001),
   appOrigin: process.env.APP_ORIGIN ?? "http://localhost:5173",

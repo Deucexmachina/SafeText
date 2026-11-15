@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ApiError, deleteScan, listScans, type ScanSummary } from "../api";
+import { ApiError, deleteScan, listScans, storagePolicy, type ScanSummary } from "../api";
 import { VerdictBadge } from "../components/VerdictBadge";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
@@ -8,6 +8,7 @@ const PAGE_SIZE = 5;
 
 export function HistoryPage() {
   const [scans, setScans] = useState<ScanSummary[] | null>(null);
+  const [policy, setPolicy] = useState<{ scanRetentionDays: number; maxScansPerUser: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -31,8 +32,8 @@ export function HistoryPage() {
   };
 
   useEffect(() => {
-    listScans()
-      .then((r) => setScans(r.scans))
+    Promise.all([listScans(), storagePolicy()])
+      .then(([r, limits]) => { setScans(r.scans); setPolicy(limits); })
       .catch((e) =>
         setError(
           e instanceof ApiError
@@ -44,8 +45,11 @@ export function HistoryPage() {
 
   if (error) return <p className="error-box">{error}</p>;
   if (!scans) return <p className="muted">Loading…</p>;
+  const retentionNotice = policy && <p className="muted">History is kept for up to {policy.scanRetentionDays} days,
+    with at most {policy.maxScansPerUser} scans per account. Oldest finished scans may be removed sooner when storage is full.
+    Screenshots are discarded after extraction or failure.</p>;
   if (scans.length === 0) {
-    return <p className="muted">No scans yet. Check a message first.</p>;
+    return <div>{retentionNotice}<p className="muted">No scans yet. Check a message first.</p></div>;
   }
 
   const pageCount = Math.ceil(scans.length / PAGE_SIZE);
@@ -54,6 +58,7 @@ export function HistoryPage() {
 
   return (
     <div className="card table-card">
+      {retentionNotice}
       {pendingDelete && <ConfirmDialog
         title="Delete this scan?"
         message="This scan will be permanently removed from your history. This action cannot be undone."
