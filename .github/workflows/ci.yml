@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  merge_group:
   workflow_dispatch:
   # A deployment workflow can call this workflow and depend on its result.
   workflow_call:
@@ -74,21 +75,12 @@ jobs:
       - name: Run database integration tests
         run: npm test
 
-      - name: Smoke-test compiled backend
-        shell: bash
+      - name: Smoke-test production website and API
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
-          PORT: 3001
           NODE_ENV: production
           APP_ORIGIN: https://safetext.example
-        run: |
-          node server/dist/index.js > "$RUNNER_TEMP/safetext-api.log" 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          if ! curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 http://localhost:3001/api/v1/health; then
-            cat "$RUNNER_TEMP/safetext-api.log"
-            exit 1
-          fi
+        run: npm run test:deployment
 
       - name: Upload frontend build
         if: matrix.node == 24
@@ -110,3 +102,15 @@ jobs:
             server/package-lock.json
           if-no-files-found: error
           retention-days: 14
+
+  required-checks:
+    name: SafeText required checks
+    if: always()
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every build and test job to succeed
+        env:
+          RESULT: ${{ needs.build-and-test.result }}
+        run: test "$RESULT" = success

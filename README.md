@@ -191,9 +191,10 @@ This is a targeted code review and regression suite, not a penetration-test cert
   instances, use a shared scan-rate-limit store and a coordinated job runner;
   the current in-process worker is intended for a single API instance.
 - API responses use no-store, nosniff, frame denial, no-referrer, restrictive
-  permissions and an API-only content-security policy. The production frontend
-  host must separately configure HTTPS, HSTS and an appropriate frontend CSP;
-  do not copy the API's `default-src 'none'` policy onto the frontend.
+  permissions and an API-only content-security policy. With `SERVE_WEB=true`,
+  frontend responses receive a separate CSP allowing same-origin scripts and
+  connections. A separate frontend host must configure its own CSP. Configure
+  HTTPS and HSTS at the public host.
 - Production startup requires an explicit HTTPS `APP_ORIGIN` without a trailing
   slash and a PostgreSQL `DATABASE_URL` with non-default credentials. Configure
   Secure cookies by setting `NODE_ENV=production`. Local development credentials
@@ -262,7 +263,8 @@ npm --prefix server run start
 ```
 
 Build compiles both apps and copies the SQL schema into the backend output.
-`start` runs the compiled API; serve `web/dist` separately for a production frontend.
+`start` runs the compiled API. Set `SERVE_WEB=true` to also serve `web/dist`
+from the same process, including frontend page refresh routes. Build both apps first.
 Tests require PostgreSQL (`npm run db:up`) and create/drop an isolated schema without
 modifying development tables. Set `TEST_DATABASE_URL` to use another test database;
 its user must have permission to create schemas.
@@ -279,13 +281,20 @@ Both live providers share timeouts, retries for temporary failures
 (timeout, HTTP 429, 5xx), per-provider rate limiting, and a circuit breaker
 that fails fast after repeated outages without blocking other scans.
 
-## GitHub Actions and future deployment
+## GitHub Actions and deployment
+
+For local setup, GitHub branch protection, and deployment on Render with Neon
+PostgreSQL, follow [the deployment guide](docs/DEPLOYMENT.md). `render.yaml`
+provides an optional Render Blueprint with a free web service and deployment
+after CI passes. Add private credentials in Render, never in the YAML file.
 
 `.github/workflows/ci.yml` runs on every push and pull request, and can also be
 started manually from the repository's **Actions > CI > Run workflow** menu.
 It verifies Node.js 22 and 24 on Linux, installs both apps from their lockfiles,
 type-checks and builds them, runs the integration tests against a temporary
-PostgreSQL service, and starts the compiled API to verify its health endpoint.
+PostgreSQL service, and starts the compiled app in production mode to verify
+the website, assets, page refresh routes, and API security boundaries. Merge
+queue events also run these checks.
 The CI database is created for each job; no local or production data is used.
 No repository secrets are required for CI.
 
@@ -299,7 +308,10 @@ Successful Node.js 24 jobs upload two artifacts, retained for 14 days:
 
 Actions are pinned to commit hashes. Dependabot checks action updates weekly.
 After the first successful GitHub run, configure your branch protection/ruleset
-to require both **Build and test (Node 22)** and **Build and test (Node 24)**.
+to require **SafeText required checks**. This final job requires both
+**Build and test (Node 22)** and **Build and test (Node 24)** to succeed.
+Actions run after a push reaches GitHub; branch protection blocks merging
+failed changes into `main`. A workflow file alone does not enable protection.
 
 For future CD, the CI workflow also supports `workflow_call`. A deployment workflow
 can call it using `uses: ./.github/workflows/ci.yml`, then make its deploy job depend
@@ -307,7 +319,10 @@ on that verification job with `needs`. Deploy only trusted pushes to your releas
 branch, use a GitHub Environment for deployment secrets/approvals, and download
 the artifacts from that same run. The hosting provider, production database,
 credentials, and deployment command must be configured when a destination is chosen.
-There is currently no deployment job or production database connection in Actions.
+There is no deployment job or production database connection in Actions. The
+recommended Render Git integration handles CD after CI passes; configure it
+using the deployment guide. Live provider availability still needs a manual
+check with your configured provider accounts.
 
 ## Troubleshooting
 

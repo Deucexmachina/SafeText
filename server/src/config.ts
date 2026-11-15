@@ -14,6 +14,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 export const config = {
+  serveWeb: process.env.SERVE_WEB === "true",
   port: Number(process.env.PORT ?? 3001),
   appOrigin: process.env.APP_ORIGIN ?? "http://localhost:5173",
   secureCookies: process.env.NODE_ENV === "production",

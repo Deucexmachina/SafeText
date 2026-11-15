@@ -1,5 +1,8 @@
 import express from "express";
 import multer from "multer";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { config } from "./config.js";
 import { scansRouter } from "./http/routes/scans.js";
 import { HttpError, sendProblem } from "./http/problem.js";
 import { authRouter, checkOrigin, requireAuth } from "./http/auth.js";
@@ -7,6 +10,10 @@ import { adminRouter } from "./http/routes/admin.js";
 
 export function createApp() {
   const app = express();
+  const webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url));
+  if (config.serveWeb && !existsSync(`${webRoot}/index.html`)) {
+    throw new Error("SERVE_WEB requires a frontend build. Run npm run build first.");
+  }
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -27,6 +34,25 @@ export function createApp() {
     res.setHeader("Cache-Control", "no-store");
     next();
   }, scansRouter);
+
+  // Keep API failures as problem JSON, including when serving the SPA below.
+  app.use("/api", (_req, res) => {
+    sendProblem(res, 404, "Not found", "The requested API route does not exist.");
+  });
+
+  if (config.serveWeb) {
+    app.use((_req, res, next) => {
+      // The confidence bar uses an inline style. Scripts and API calls stay same-origin.
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+      next();
+    });
+    app.use(express.static(webRoot));
+    app.get("*", (req, res, next) => {
+      // Missing assets must not receive index.html with a misleading 200 response.
+      if (req.path.startsWith('/assets/') || !req.accepts('html')) return next();
+      res.sendFile(`${webRoot}/index.html`);
+    });
+  }
 
   app.use((_req, res) => {
     sendProblem(res, 404, "Not found", "The requested route does not exist.");

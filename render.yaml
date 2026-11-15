@@ -1,0 +1,33 @@
+# Import with Render > New > Blueprint, or use these settings for a Web Service.
+services:
+  - type: web
+    name: safetext
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: npm --prefix server ci --include=dev && npm --prefix web ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: SERVE_WEB
+        value: "true"
+      - key: APP_ORIGIN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: LLM_WHISPERER_API_KEY
+        sync: false
+      - key: LLM_WHISPERER_BASE_URL
+        value: https://llmwhisperer-api.us-central.unstract.com/api/v2
+      - key: KIMI_API_KEY
+        sync: false
+      - key: KIMI_MODEL
+        value: kimi-k3
+      - key: GOOGLE_SAFE_BROWSING_API_KEY
+        sync: false
