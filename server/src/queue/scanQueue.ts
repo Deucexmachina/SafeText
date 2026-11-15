@@ -3,6 +3,7 @@ import { analyzer, ocr, threatIntel } from "../providers/index.js";
 import { extractUrls } from "../domain/extract.js";
 import { combineScanResults } from "../domain/verdicts.js";
 import { ProviderError } from "../providers/resilience.js";
+import { prepareOcrText } from '../providers/ocr/prepareText.js';
 
 const services = { getScan, setState, saveExtraction, saveResult, ocr, analyzer, threatIntel };
 export function normalizeText(text: string): string {
@@ -52,6 +53,7 @@ export async function processScan(id: string, dependencies = services): Promise<
   await setState(id, row.input_type === "image" && !trustedExtraction ? "EXTRACTING" : "ANALYZING");
   let text: string;
   let senderId: string | null = null;
+  let extractionNote: string | null = trustedExtraction ? row.extraction_note ?? null : null;
   try {
     if (trustedExtraction) {
       // Resume after restart without consuming one-time OCR output again.
@@ -68,12 +70,18 @@ export async function processScan(id: string, dependencies = services): Promise<
       text = o.text;
       senderId = o.senderId;
     }
-    // Persist one-time OCR output immediately, including empty output, and
-    // release screenshot bytes before any analysis or validation can fail.
-    if (text.length > 10_000) throw new ProviderError("Text extraction", "message exceeds 10,000 characters; crop the screenshot to the SMS");
-    await saveExtraction(id, text, senderId);
-    row.image_bytes = null;
+    // Clean image OCR before persisting or invoking either downstream provider.
+    // Pasted text keeps its contents, including literal words from app interfaces.
+    if (row.input_type === 'image') {
+      const prepared = prepareOcrText(text);
+      text = prepared.text;
+      extractionNote = prepared.note ?? extractionNote;
+      if (prepared.note) senderId = null; // A previous result's sender is not evidence.
+    }
     text = normalizeText(text);
+    if (text.length > 10_000) throw new ProviderError("Text extraction", "message exceeds 10,000 characters; crop the screenshot to the SMS");
+    await saveExtraction(id, text, senderId, extractionNote);
+    row.image_bytes = null;
     if (!/[\p{L}\p{N}]/u.test(text)) throw new ProviderError("Text extraction", row.input_type === "image"
       ? "the screenshot could not be read; upload a clearer screenshot or paste the SMS text"
       : "no readable SMS text was supplied; paste the message including its words or numbers");

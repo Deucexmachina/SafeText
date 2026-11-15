@@ -110,9 +110,23 @@ the MIME type and file signature before submitting raw binary bytes to OCR.
 OCR uses a bounded 120-second deadline and at most 30 status polls. Unreadable
 or empty extraction is INCONCLUSIVE and is never sent to Kimi.
 
+OCR requests layout-preserving output without page separators. Extracted line
+breaks are preserved in the result display; leftover provider delimiters and
+control characters are removed before saving and analysis. When a screenshot
+contains a complete, recognizable SafeText result page, only its **Message checked**
+section is analyzed. A visible extraction note discloses the removed page content.
+Unclear or nested result pages are inconclusive and ask for a crop of the original
+SMS. Ordinary message text, warnings, and URLs are preserved; no sender or missing
+words are invented. Crop screenshots to the original message and visible sender
+for best results. Email addresses are not treated as bare-domain URL links.
+
 One-time OCR output is saved before analysis starts, and screenshot bytes are
 removed after extraction or terminal failure. Re-uploading a successful image
-returns its saved result; re-uploading a failed/partial image retries that scan,
+returns its saved result when its OCR cleanup version is current. Re-uploading
+an older verified OCR result cleans its saved text and re-runs analysis once,
+without submitting another OCR job. Existing verdicts stay unchanged until that
+re-upload; new migrations do not mark old rows as already cleaned.
+Re-uploading a failed/partial image retries that scan,
 reusing readable saved text. Restarted jobs likewise reuse saved extraction.
 Only image text marked as LLMWhisperer v2 extraction is eligible for reuse.
 Legacy screenshot results (including the former canned OCR samples) are shown
@@ -122,6 +136,7 @@ The migration does not infer provenance from message contents or delete history.
 The UI displays queue/extraction/analysis progress and sanitized provider errors.
 The scan response adds `progress` and `error` without changing existing routes
 or fields. `incomplete` continues to use `extraction`, `analysis`, `threat_intel`.
+`extraction.note` is optional and explains result-page cleanup when it occurred.
 
 Kimi K3 always uses reasoning, so its request reserves completion tokens for
 reasoning plus JSON and uses low reasoning effort. The output is validated

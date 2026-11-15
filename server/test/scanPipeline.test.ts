@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from 'node:fs';
+import { prepareOcrText } from '../src/providers/ocr/prepareText.js';
 import { processScan } from "../src/queue/scanQueue.js";
 import type { ScanRow, FinalResult } from "../src/db/scans.js";
 import type { AnalysisResult, ThreatIntelResult } from "../src/domain/types.js";
@@ -17,7 +19,7 @@ function harness(inputType: "text" | "image", text = "  Pay now https://example.
   const deps = {
     getScan: async () => row,
     setState: async () => {},
-    saveExtraction: async (_id: string, extracted: string) => { row.extracted_text = extracted; row.image_bytes = null; },
+    saveExtraction: async (_id: string, extracted: string, _sender?: string | null, note?: string | null) => { row.extracted_text = extracted; row.image_bytes = null; row.extraction_note = note ?? null; },
     saveResult: async (_id: string, result: FinalResult) => { final = result; row.image_bytes = null; },
     ocr: { extract: async () => { ocrCalls++; return { text, senderId: null, confidence: 0 }; } },
     analyzer: { analyze: async (input: { text: string }) => { assert.equal(row.image_bytes, null); analyzed.push(input.text); return analysis; } },
@@ -58,6 +60,8 @@ test("CT-01/IT-01: screenshot binary submit -> poll -> one-time retrieve -> pers
       assert.equal((init?.headers as Record<string, string>)["unstract-key"], "test-secret");
       if (url.pathname.endsWith("/whisper")) {
         assert.equal(init?.method, "POST"); assert.deepEqual(Buffer.from(init?.body as Uint8Array), PNG);
+        assert.equal(url.searchParams.get('output_mode'), 'layout_preserving');
+        assert.equal(url.searchParams.get('page_separator'), '');
         return Response.json({ whisper_hash: "job hash" }, { status: 202 });
       }
       assert.equal(url.searchParams.get("whisper_hash"), "job hash");
@@ -67,11 +71,33 @@ test("CT-01/IT-01: screenshot binary submit -> poll -> one-time retrieve -> pers
   });
   await processScan("test", h.deps);
   assert.equal(calls.filter(path => path.endsWith("whisper-retrieve")).length, 1);
-  assert.equal(h.row.extracted_text, " Pay now https://example.com\r\n");
+  assert.equal(h.row.extracted_text, "Pay now https://example.com");
   assert.equal(h.row.image_bytes, null);
   assert.deepEqual(h.analyzed, ["Pay now https://example.com"]);
   assert.deepEqual(h.links, [["https://example.com"]]);
   assert.equal(h.final?.state, "COMPLETE");
+});
+
+test('CT-01/IT-01: OCR result-page cleanup feeds the same message to analysis as pasted text', async () => {
+  const page = readFileSync(new URL('./fixtures/ocr-result-page.txt', import.meta.url), 'utf8');
+  const image = harness('image', page);
+  const text = harness('text', prepareOcrText(page).text);
+  await processScan('test', image.deps); await processScan('test', text.deps);
+  assert.deepEqual(image.analyzed, text.analyzed);
+  assert.deepEqual(image.links, [[]]);
+  assert.equal(image.row.extracted_text, text.row.extracted_text);
+  assert.match(image.row.extraction_note ?? '', /previous verdict/);
+  assert.equal(image.row.image_bytes, null);
+});
+
+test('FT-01: ambiguous result screenshot skips analysis and URL checks', async () => {
+  const page = readFileSync(new URL('./fixtures/ocr-result-page.txt', import.meta.url), 'utf8');
+  const h = harness('image', page.replace('MESSAGE CHECKED', 'missing heading'));
+  await processScan('test', h.deps);
+  assert.equal(h.final?.state, 'INCONCLUSIVE');
+  assert.match(h.final?.error ?? '', /Crop to the original SMS/);
+  assert.deepEqual(h.analyzed, []); assert.deepEqual(h.links, []);
+  assert.equal(h.row.image_bytes, null);
 });
 
 test("FT-01: unreadable OCR is INCONCLUSIVE, never sent to Kimi, and bytes are discarded", async () => {

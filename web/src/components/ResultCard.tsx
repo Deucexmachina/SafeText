@@ -122,6 +122,7 @@ export function ResultCard({ scan }: { scan: ScanResult }) {
       {scan.extraction?.text && (
         <div className="checked-msg">
           <h3>Message checked</h3>
+          {scan.extraction.note && <p className="notice">{scan.extraction.note}</p>}
           <blockquote>{scan.extraction.text}</blockquote>
         </div>
       )}

@@ -49,7 +49,7 @@ export class LlmWhispererOcrProvider implements OcrProvider {
         return data as Record<string, unknown>;
       });
     };
-    const submitted = await call("whisper", { mode: "high_quality", output_mode: "text" }, input.bytes);
+    const submitted = await call("whisper", { mode: "high_quality", output_mode: "layout_preserving", page_separator: "" }, input.bytes);
     if (typeof submitted.whisper_hash !== "string" || !submitted.whisper_hash) throw new ProviderError(PROVIDER, "did not return a job ID");
     const query = { whisper_hash: submitted.whisper_hash };
     for (let attempt = 0; attempt < (this.opts.maxPolls ?? 30); attempt++) {

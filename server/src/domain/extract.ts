@@ -23,6 +23,8 @@ function clean(match: string): string {
 export function extractUrls(text: string): string[] {
   const urls = new Set<string>();
   const covered: string[] = [];
+  const emails = [...text.matchAll(/[^\s<>()"'@]+@(?:[a-z0-9-]+\.)+[a-z]{2,}/gi)]
+    .map(match => ({ start: match.index!, end: match.index! + match[0].length }));
 
   for (const m of text.matchAll(EXPLICIT_URL_RE)) {
     const url = clean(m[0]);
@@ -35,6 +37,7 @@ export function extractUrls(text: string): string[] {
   // Bare domains like "gcash-verify.top" with no scheme — skip ones already
   // captured inside a full URL.
   for (const m of text.matchAll(DOMAIN_RE)) {
+    if (emails.some(email => m.index! >= email.start && m.index! < email.end)) continue;
     const candidate = clean(m[0]);
     const host = candidate.split("/")[0];
     const tld = host.split(".").pop() ?? "";

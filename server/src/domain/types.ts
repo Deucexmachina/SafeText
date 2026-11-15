@@ -54,7 +54,7 @@ export interface ScanResultDto {
   error: string | null;
   scanId: string;
   status: ScanStatus;
-  extraction: { text: string } | null;
+  extraction: { text: string; note?: string } | null;
   analysis: AnalysisResult | null;
   threatIntel: ThreatIntelResult | null;
   incomplete: Stage[];

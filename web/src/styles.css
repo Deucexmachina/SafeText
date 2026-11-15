@@ -410,6 +410,7 @@ textarea:disabled {
 }
 
 .checked-msg blockquote {
+  white-space: pre-wrap;
   margin: 6px 0 0;
   padding: 10px 12px;
   border-left: 3px solid var(--border);

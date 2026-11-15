@@ -12,10 +12,11 @@ import { pool } from "./pool.js";
 import type { PoolClient } from 'pg';
 import { HttpError } from '../http/problem.js';
 import { reserveScanStorage, scanAdmissionLock } from './retention.js';
+import { OCR_TEXT_VERSION } from '../providers/ocr/prepareText.js';
 
 // Browser results/history never need screenshot bytes. Avoid transferring queued images from Neon.
 const publicColumns = `id, state, input_type, input_text, image_hash, image_mime, NULL::bytea AS image_bytes,
-  extracted_text, extraction_source, sender_id, analysis, threat_intel, incomplete, error, created_at, updated_at`;
+  extracted_text, extraction_source, extraction_version, extraction_note, sender_id, analysis, threat_intel, incomplete, error, created_at, updated_at`;
 
 async function checkScanCapacity(client: PoolClient, userId: string): Promise<void> {
   // All admissions share this transaction lock, avoiding check/insert races.
@@ -36,6 +37,8 @@ export interface ScanRow {
   image_bytes: Buffer | null;
   extracted_text: string | null;
   extraction_source: string | null;
+  extraction_version: number;
+  extraction_note: string | null;
   sender_id: string | null;
   analysis: AnalysisResult | null;
   threat_intel: ThreatIntelResult | null;
@@ -96,7 +99,8 @@ export async function retryImageScan(id: string, bytes: Buffer): Promise<boolean
   await client.query('SELECT pg_advisory_xact_lock(1935763001)');
   const candidate = await client.query<{ user_id: string }>(
     `SELECT user_id FROM scans WHERE id = $1 AND input_type = 'image' AND
-      (state IN ('PARTIAL', 'INCONCLUSIVE') OR (state = 'COMPLETE' AND extraction_source IS DISTINCT FROM 'llmwhisperer_v2')) FOR UPDATE`, [id]);
+      (state IN ('PARTIAL', 'INCONCLUSIVE') OR (state = 'COMPLETE' AND
+        (extraction_source IS DISTINCT FROM 'llmwhisperer_v2' OR extraction_version < $2))) FOR UPDATE`, [id, OCR_TEXT_VERSION]);
   if (!candidate.rows[0]) { await client.query('COMMIT'); return false; }
   await checkScanCapacity(client, candidate.rows[0].user_id);
   const result = await client.query(
@@ -107,8 +111,8 @@ export async function retryImageScan(id: string, bytes: Buffer): Promise<boolean
        image_bytes = CASE WHEN extraction_source IS DISTINCT FROM 'llmwhisperer_v2' OR incomplete ? 'extraction' OR NULLIF(extracted_text, '') IS NULL THEN $2::bytea ELSE NULL END
      WHERE id = $1 AND input_type = 'image' AND
        (state IN ('PARTIAL', 'INCONCLUSIVE') OR
-        (state = 'COMPLETE' AND extraction_source IS DISTINCT FROM 'llmwhisperer_v2')) RETURNING id`,
-    [id, bytes],
+        (state = 'COMPLETE' AND (extraction_source IS DISTINCT FROM 'llmwhisperer_v2' OR extraction_version < $3))) RETURNING id`,
+    [id, bytes, OCR_TEXT_VERSION],
   );
   await reserveScanStorage(client, candidate.rows[0].user_id, 0, false);
   await client.query('COMMIT');
@@ -153,15 +157,17 @@ export async function saveExtraction(
   id: string,
   text: string,
   senderId: string | null,
+  note: string | null = null,
 ): Promise<void> {
   if (text.length > 10000 || (senderId?.length ?? 0) > 512) throw new Error('Extraction exceeds storage limits.');
   await pool.query(
     `UPDATE scans
-       SET extracted_text = $2, sender_id = $3, image_bytes = NULL,
+       SET extracted_text = $2, sender_id = $3, image_bytes = NULL, extraction_note = $4,
+           extraction_version = CASE WHEN input_type = 'image' THEN $5 ELSE 0 END,
            extraction_source = CASE WHEN input_type = 'image' THEN 'llmwhisperer_v2' ELSE 'text' END,
            state = 'ANALYZING', updated_at = now()
      WHERE id = $1`,
-    [id, text, senderId],
+    [id, text, senderId, note, OCR_TEXT_VERSION],
   );
 }
 
@@ -228,7 +234,8 @@ export function toDto(row: ScanRow): ScanResultDto {
     progress: ["QUEUED", "EXTRACTING", "ANALYZING"].includes(row.state) ? row.state as "QUEUED" | "EXTRACTING" | "ANALYZING" : null,
     error: legacyImage ? "This older screenshot scan used unverified sample extraction. Upload the screenshot again to read its actual text with LLMWhisperer." : row.error,
     status: legacyImage ? 'INCONCLUSIVE' : PUBLIC_STATUS[row.state],
-    extraction: !legacyImage && row.extracted_text ? { text: row.extracted_text } : null,
+    extraction: !legacyImage && row.extracted_text ? { text: row.extracted_text,
+      ...(row.extraction_note ? { note: row.extraction_note } : {}) } : null,
     analysis: legacyImage ? null : row.analysis,
     threatIntel: legacyImage ? null : row.threat_intel,
     incomplete: legacyImage ? ['extraction', 'analysis', 'threat_intel'] : row.incomplete ?? [],

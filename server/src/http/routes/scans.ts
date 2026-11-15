@@ -88,7 +88,7 @@ scansRouter.post(
         }
         const hash = createHash("sha256").update(file.buffer).digest("hex");
 
-        // Dedup: same image content returns the existing scan, no new job.
+        // Dedup returns the same scan; stale cleanup versions re-run analysis using saved OCR.
         const existing = await findIdByImageHash(hash, req.user!.id);
         if (existing) {
           if (await retryImageScan(existing, file.buffer)) enqueueScan(existing);

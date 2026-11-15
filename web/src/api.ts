@@ -24,7 +24,7 @@ export interface ScanResult {
   error?: string | null;
   scanId: string;
   status: ScanStatus;
-  extraction: { text: string } | null;
+  extraction: { text: string; note?: string } | null;
   analysis: Analysis | null;
   threatIntel: { urls: ThreatUrl[] } | null;
   incomplete: string[];

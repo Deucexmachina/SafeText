@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { test } from "node:test";
+import { readFileSync } from 'node:fs';
 import { Pool } from "pg";
 import type { ScanResultDto } from "../src/domain/types.js";
 import { ProviderError } from "../src/providers/resilience.js";
@@ -72,6 +73,20 @@ test("authenticated scan routes: text, screenshots, errors, retry and input vali
     const saved = await pool.query("SELECT image_bytes FROM scans WHERE id = $1", [screenshot.scanId]);
     assert.equal(saved.rows[0].image_bytes, null);
     await finished(await upload()); assert.equal(ocrCalls, 1);
+
+    // Re-upload upgrades a verified pre-cleanup cache, without paying for OCR again.
+    const oldPage = readFileSync(new URL('./fixtures/ocr-result-page.txt', import.meta.url), 'utf8');
+    await pool.query("UPDATE scans SET extracted_text = $2, extraction_version = 0 WHERE id = $1", [screenshot.scanId, oldPage]);
+    const beforeUpgrade = analyzed;
+    const upgraded = await finished(await upload());
+    assert.equal(upgraded.scanId, screenshot.scanId); assert.equal(ocrCalls, 1);
+    assert.equal(analyzed, beforeUpgrade + 1);
+    assert.match(upgraded.extraction?.note ?? '', /previous verdict/);
+    assert.doesNotMatch(upgraded.extraction?.text ?? '', /learner@|old-result|Confidence/);
+    assert.deepEqual(upgraded.threatIntel?.urls, []);
+    const version = (await pool.query('SELECT extraction_version, extraction_note FROM scans WHERE id = $1', [screenshot.scanId])).rows[0];
+    assert.equal(version.extraction_version, 1); assert(version.extraction_note);
+    await finished(await upload()); assert.equal(analyzed, beforeUpgrade + 1);
 
     // A completed legacy stub scan used to be returned forever by image hash.
     await pool.query("UPDATE scans SET extraction_source = NULL, extracted_text = 'Shopee sample text', sender_id = 'SHOPEE-PH' WHERE id = $1", [screenshot.scanId]);

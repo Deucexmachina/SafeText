@@ -142,7 +142,8 @@ export function ScanPage() {
       {validatingImage && <p className="hint" role="status">Checking image...</p>}
       {file && (
         <p className="hint">
-          The screenshot will be read for its SMS text. Submit either text or an image; clear the other input first.
+          Crop to the original message and its sender. Avoid including previous scan results or account details.
+          Submit either text or an image; clear the other input first.
         </p>
       )}
 

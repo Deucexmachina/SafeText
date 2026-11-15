@@ -1,0 +1,20 @@
+SafeText learner@example.com Log out
+Safe Confidence 90
+WHY
+Previous result: verify the sender at https://old-result.example.com
+DETAILS FOUND
+Sender Example Service
+Links — Numbers —
+MESSAGE CHECKED
+2-Step Verification Code: 000123
+
+Hello,
+A verification code was requested for your example account.
+Do not share this code with anyone.
+Your verification code is: 000123.
+
+Thank you,
+The Example Team
+Scan scn_01M7FG1XJGJ6MREH80AWWDKJS2 · Nov 15, 2026, 7:39 PM
+Check another message
+<<<
