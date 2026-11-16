@@ -29,7 +29,7 @@ export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
       <label className="field-label" htmlFor="email">Email</label>
       <input id="email" type="email" autoComplete="email" maxLength={254} required value={email} onChange={e => setEmail(e.target.value)} disabled={busy} />
       <PasswordInput id="password" label="Password" value={password} onChange={setPassword} disabled={busy} autoComplete={action === "login" ? "current-password" : "new-password"} />
-      <p className="hint">Use 12 to 128 characters.</p>
+      {action === "register" && <p className="hint">Use 12 to 128 characters.</p>}
       {action === "login" && loginFailed && <p className="forgot-row"><Link to="/forgot-password">Forgot password?</Link></p>}
       {error && <p role="alert" className="error-box">{error}</p>}
       <button className="btn-primary" disabled={busy}>{busy ? "Please wait..." : action === "login" ? "Log in" : "Create account"}</button>
