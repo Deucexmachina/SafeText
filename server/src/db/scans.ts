@@ -177,6 +177,7 @@ export interface FinalResult {
   threatIntel: ThreatIntelResult | null;
   incomplete: Stage[];
   error?: string | null;
+  scamCategory?: string | null;
 }
 
 export async function saveResult(id: string, r: FinalResult): Promise<void> {
@@ -184,7 +185,7 @@ export async function saveResult(id: string, r: FinalResult): Promise<void> {
   if (Buffer.byteLength(JSON.stringify([r.analysis, r.threatIntel]), 'utf8') > 64 * 1024) {
     const flagged = r.threatIntel?.urls.find(url => url.threat);
     const evidence = flagged && Buffer.byteLength(JSON.stringify(flagged), 'utf8') < 48 * 1024 ? flagged : null;
-    r = { state: evidence ? 'PARTIAL' : 'INCONCLUSIVE',
+    r = { scamCategory: r.scamCategory, state: evidence ? 'PARTIAL' : 'INCONCLUSIVE',
       analysis: evidence ? { verdict: 'MALICIOUS', confidence: 90,
         reasons: ['A URL was flagged by Google Safe Browsing. The full provider result was too large to retain.'],
         entities: { senderId: null, urls: [], phoneNumbers: [] } } : null,
@@ -195,7 +196,7 @@ export async function saveResult(id: string, r: FinalResult): Promise<void> {
   await pool.query(
     `UPDATE scans
        SET state = $2, analysis = $3, threat_intel = $4, incomplete = $5,
-           error = $6, image_bytes = NULL, updated_at = now()
+           error = $6, scam_category = $7, image_bytes = NULL, updated_at = now()
      WHERE id = $1`,
     [
       id,
@@ -204,6 +205,7 @@ export async function saveResult(id: string, r: FinalResult): Promise<void> {
       r.threatIntel ? JSON.stringify(r.threatIntel) : null,
       JSON.stringify(r.incomplete),
       r.error?.slice(0, 1000) ?? null,
+      r.scamCategory ?? null,
     ],
   );
 }

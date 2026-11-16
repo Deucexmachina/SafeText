@@ -19,7 +19,8 @@ export type Stage = "extraction" | "analysis" | "threat_intel";
 export type ThreatType =
   | "SOCIAL_ENGINEERING"
   | "MALWARE"
-  | "UNWANTED_SOFTWARE";
+  | "UNWANTED_SOFTWARE"
+  | "MANUAL_BLOCK";
 
 export interface Entities {
   senderId: string | null;

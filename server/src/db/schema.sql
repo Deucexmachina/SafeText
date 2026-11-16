@@ -33,6 +33,22 @@ CREATE TABLE IF NOT EXISTS admin_audit (
 );
 ALTER TABLE admin_audit ADD COLUMN IF NOT EXISTS reason TEXT;
 
+-- Runtime-tunable knobs set from the admin UI; absent keys fall back to env config.
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Curated domain reputation: 'block' always flags, 'allow' never flags.
+-- A domain lives on one list; moving it replaces the old entry.
+CREATE TABLE IF NOT EXISTS domain_lists (
+  domain TEXT PRIMARY KEY,
+  list TEXT NOT NULL CHECK (list IN ('block', 'allow')),
+  added_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS auth_attempts (
   key_hash TEXT PRIMARY KEY,
   attempts INTEGER NOT NULL,
@@ -78,6 +94,8 @@ ALTER TABLE scans ADD COLUMN IF NOT EXISTS extraction_source TEXT;
 -- Zero marks existing OCR for one-time reprocessing on re-upload, without trusting legacy stubs.
 ALTER TABLE scans ADD COLUMN IF NOT EXISTS extraction_version INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE scans ADD COLUMN IF NOT EXISTS extraction_note TEXT;
+-- Keyword-derived scam type; trends are aggregated from this column alone.
+ALTER TABLE scans ADD COLUMN IF NOT EXISTS scam_category TEXT;
 DROP INDEX IF EXISTS scans_image_hash_key;
 CREATE UNIQUE INDEX IF NOT EXISTS scans_user_image_hash_key
   ON scans (user_id, image_hash) WHERE image_hash IS NOT NULL;
@@ -88,3 +106,14 @@ CREATE INDEX IF NOT EXISTS scans_state_updated_idx ON scans(state, updated_at);
 CREATE INDEX IF NOT EXISTS sessions_user_expiry_idx ON sessions(user_id, expires_at DESC);
 CREATE INDEX IF NOT EXISTS auth_attempts_window_idx ON auth_attempts(window_start);
 CREATE INDEX IF NOT EXISTS admin_audit_created_idx ON admin_audit(created_at);
+
+-- User feedback on verdicts. Message text is stored only with consent.
+CREATE TABLE IF NOT EXISTS scan_reports (
+  id BIGSERIAL PRIMARY KEY,
+  scan_id TEXT NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expected_verdict TEXT NOT NULL CHECK (expected_verdict IN ('SAFE','SUSPICIOUS','MALICIOUS','INCONCLUSIVE')),
+  shared_text TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (scan_id, user_id)
+);

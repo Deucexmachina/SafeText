@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { downloadAuditCsv, forceLogoutUser, getAdminOverview, listAudit, listUsers, setUserDisabled, type AdminOverview, type AdminUser, type AuditEntry, type UserFilter } from '../api';
+import { addDomain, downloadAuditCsv, forceLogoutUser, getAdminOverview, getAdminSettings, listAudit, listDomains, listReports, listUsers, removeDomain, saveAdminSettings, setUserDisabled, type AdminOverview, type AdminSettings, type AdminUser, type AuditEntry, type DomainRule, type Report, type UserFilter } from '../api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
 const PAGE = 20;
@@ -13,12 +13,26 @@ const ACTION_LABELS: Record<string, string> = {
   force_logout: 'Forced logout',
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  gcash_bank: 'GCash / bank',
+  fake_delivery: 'Fake delivery',
+  job_offer: 'Job offers',
+  prize: 'Prize winnings',
+};
+
+const SETTING_FIELDS: { key: keyof AdminSettings & string; label: string; hint: string }[] = [
+  { key: 'scansPer15Min', label: 'Scans per 15 minutes', hint: 'Per account, max 200' },
+  { key: 'maxScansPerUser', label: 'Scans kept per account', hint: 'Max 1000' },
+  { key: 'scanRetentionDays', label: 'Retention (days)', hint: '1–3650' },
+  { key: 'maxUploadMb', label: 'Max upload (MB)', hint: '1–16' },
+];
+
 function fmt(date: string | null) {
   return date ? new Date(date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 }
 
 export function AdminPage() {
-  const [view, setView] = useState<'overview' | 'accounts' | 'audit'>('overview');
+  const [view, setView] = useState<'overview' | 'accounts' | 'audit' | 'domains' | 'reports' | 'settings'>('overview');
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [overviewError, setOverviewError] = useState('');
   const [overviewLoading, setOverviewLoading] = useState(true);
@@ -38,6 +52,23 @@ export function AdminPage() {
   const [auditOffset, setAuditOffset] = useState(0);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditError, setAuditError] = useState('');
+
+  const [domains, setDomains] = useState<DomainRule[]>([]);
+  const [domainsLoading, setDomainsLoading] = useState(true);
+  const [domainsError, setDomainsError] = useState('');
+  const [domainDraft, setDomainDraft] = useState('');
+  const [domainList, setDomainList] = useState<'block' | 'allow'>('block');
+  const [domainBusy, setDomainBusy] = useState(false);
+
+  const [reports, setReports] = useState<{ rows: Report[]; falseAlarms: number; missedScams: number } | null>(null);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [reportsError, setReportsError] = useState('');
+
+  const [settings, setSettings] = useState<AdminSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState('');
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
 
   useEffect(() => {
     if (view !== 'overview') return;
@@ -65,6 +96,33 @@ export function AdminPage() {
       .finally(() => { if (!cancelled) setAuditLoading(false); });
     return () => { cancelled = true; };
   }, [auditOffset, view]);
+
+  useEffect(() => {
+    if (view !== 'domains') return;
+    let cancelled = false; setDomainsLoading(true); setDomainsError('');
+    listDomains().then(result => { if (!cancelled) setDomains(result.rows); })
+      .catch(err => { if (!cancelled) setDomainsError(err instanceof Error ? err.message : 'Could not load domains.'); })
+      .finally(() => { if (!cancelled) setDomainsLoading(false); });
+    return () => { cancelled = true; };
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== 'reports') return;
+    let cancelled = false; setReportsLoading(true); setReportsError('');
+    listReports().then(result => { if (!cancelled) setReports(result); })
+      .catch(err => { if (!cancelled) setReportsError(err instanceof Error ? err.message : 'Could not load reports.'); })
+      .finally(() => { if (!cancelled) setReportsLoading(false); });
+    return () => { cancelled = true; };
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== 'settings') return;
+    let cancelled = false; setSettingsLoading(true); setSettingsError(''); setSettingsSaved(false);
+    getAdminSettings().then(result => { if (!cancelled) setSettings(result); })
+      .catch(err => { if (!cancelled) setSettingsError(err instanceof Error ? err.message : 'Could not load settings.'); })
+      .finally(() => { if (!cancelled) setSettingsLoading(false); });
+    return () => { cancelled = true };
+  }, [view]);
 
   function applyFilter(event: FormEvent) {
     event.preventDefault();
@@ -96,6 +154,42 @@ export function AdminPage() {
     } finally { setBusy(false); }
   }
 
+  async function submitDomain(event: FormEvent) {
+    event.preventDefault();
+    if (domainBusy || !domainDraft.trim()) return;
+    setDomainBusy(true); setDomainsError('');
+    try {
+      const rule = await addDomain(domainDraft.trim(), domainList);
+      setDomains(current => [...current.filter(d => d.domain !== rule.domain), rule]
+        .sort((a, b) => a.list === b.list ? a.domain.localeCompare(b.domain) : a.list.localeCompare(b.list)));
+      setDomainDraft('');
+    } catch (err) { setDomainsError(err instanceof Error ? err.message : 'Could not add the domain.'); }
+    finally { setDomainBusy(false); }
+  }
+
+  async function deleteDomain(domain: string) {
+    if (domainBusy) return;
+    setDomainBusy(true); setDomainsError('');
+    try { await removeDomain(domain); setDomains(current => current.filter(d => d.domain !== domain)); }
+    catch (err) { setDomainsError(err instanceof Error ? err.message : 'Could not remove the domain.'); }
+    finally { setDomainBusy(false); }
+  }
+
+  async function submitSettings(event: FormEvent) {
+    event.preventDefault();
+    if (settingsBusy || !settings) return;
+    setSettingsBusy(true); setSettingsError(''); setSettingsSaved(false);
+    try {
+      setSettings(await saveAdminSettings({
+        scansPer15Min: settings.scansPer15Min, maxScansPerUser: settings.maxScansPerUser,
+        scanRetentionDays: settings.scanRetentionDays, maxUploadMb: settings.maxUploadMb,
+        maintenance: settings.maintenance, announcement: settings.announcement,
+      }));
+      setSettingsSaved(true);
+    } catch (err) { setSettingsError(err instanceof Error ? err.message : 'Could not save settings.'); }
+    finally { setSettingsBusy(false); }
+  }
+
   return <section className="card">
     <h1>Account management</h1>
     <p className="muted">Manage account access. Each person's messages and scan history remain private.</p>
@@ -106,6 +200,12 @@ export function AdminPage() {
         onClick={() => setView('accounts')}>Accounts</button>
       <button role="tab" aria-selected={view === 'audit'} className={view === 'audit' ? 'admin-tab active' : 'admin-tab'}
         onClick={() => setView('audit')}>Audit log</button>
+      <button role="tab" aria-selected={view === 'domains'} className={view === 'domains' ? 'admin-tab active' : 'admin-tab'}
+        onClick={() => setView('domains')}>Domains</button>
+      <button role="tab" aria-selected={view === 'reports'} className={view === 'reports' ? 'admin-tab active' : 'admin-tab'}
+        onClick={() => setView('reports')}>Reports</button>
+      <button role="tab" aria-selected={view === 'settings'} className={view === 'settings' ? 'admin-tab active' : 'admin-tab'}
+        onClick={() => setView('settings')}>Settings</button>
     </div>
 
     {view === 'overview' && <>
@@ -131,6 +231,18 @@ export function AdminPage() {
           </tr>)}</tbody>
         </table></div>
         <p className="hint">"Stub" means no API key is configured — the provider returns canned data and stages may fail in real runs.</p>
+
+        <h2 className="admin-section-title">Scam trends, last 7 days</h2>
+        {overview.scamTrends7d.length === 0
+          ? <p className="muted">No categorized scam scans this week.</p>
+          : <div className="admin-table-wrap"><table className="history-table">
+            <thead><tr><th>Category</th><th>Scans</th></tr></thead>
+            <tbody>{overview.scamTrends7d.map(row => <tr key={row.category}>
+              <td>{CATEGORY_LABELS[row.category] ?? row.category}</td>
+              <td>{row.count}</td>
+            </tr>)}</tbody>
+          </table></div>}
+        <p className="hint">Categories only — message text is never included in trends.</p>
 
         <h2 className="admin-section-title">Top flagged link domains</h2>
         {overview.topFlaggedDomains.length === 0
@@ -231,6 +343,75 @@ export function AdminPage() {
       </table>{!audit.length && <p>No admin actions yet.</p>}</div>}
       <div className="pagination"><button className="page-btn" disabled={auditLoading || auditOffset === 0} onClick={() => setAuditOffset(auditOffset - PAGE)}>Previous</button>
         <button className="page-btn" disabled={auditLoading || audit.length < PAGE} onClick={() => setAuditOffset(auditOffset + PAGE)}>Next</button></div>
+    </>}
+
+    {view === 'domains' && <>
+      <p className="muted">Blocklisted domains are always flagged; allowlisted domains are never flagged. Subdomains are included.</p>
+      <form className="admin-filters" onSubmit={submitDomain}>
+        <input type="text" placeholder="gcash.com" aria-label="Domain" value={domainDraft}
+          onChange={e => setDomainDraft(e.target.value)} />
+        <select aria-label="List" value={domainList} onChange={e => setDomainList(e.target.value as 'block' | 'allow')}>
+          <option value="block">Blocklist</option>
+          <option value="allow">Allowlist</option>
+        </select>
+        <button className="page-btn" type="submit" disabled={domainBusy || !domainDraft.trim()}>Add</button>
+      </form>
+      {domainsError && <p role="alert" className="error-box">{domainsError}</p>}
+      {domainsLoading ? <p role="status">Loading domains...</p> : <div className="admin-table-wrap"><table className="history-table">
+        <thead><tr><th>Domain</th><th>List</th><th>Added</th><th></th></tr></thead>
+        <tbody>{domains.map(rule => <tr key={rule.domain}>
+          <td><span className="url">{rule.domain}</span></td>
+          <td><span className={`badge ${rule.list === 'block' ? 'badge-malicious' : 'badge-safe'}`}>{rule.list === 'block' ? 'Blocked' : 'Allowed'}</span></td>
+          <td className="nowrap">{fmt(rule.created_at)}</td>
+          <td><button className="page-btn" disabled={domainBusy} onClick={() => void deleteDomain(rule.domain)}>Remove</button></td>
+        </tr>)}</tbody>
+      </table>{!domains.length && <p>No domains yet. Adding a domain to a list applies to new scans.</p>}</div>}
+    </>}
+
+    {view === 'reports' && <>
+      {reports && <div className="stat-grid">
+        <div className="stat-box"><div className="stat-num stat-malicious">{reports.falseAlarms}</div><div className="stat-label">False alarms</div></div>
+        <div className="stat-box"><div className="stat-num stat-suspicious">{reports.missedScams}</div><div className="stat-label">Missed scams</div></div>
+      </div>}
+      <p className="hint">Message text appears only where the reporting user chose to share it.</p>
+      {reportsError && <p role="alert" className="error-box">{reportsError}</p>}
+      {reportsLoading || !reports ? <p role="status">Loading reports...</p> : <div className="admin-table-wrap"><table className="history-table">
+        <thead><tr><th>When</th><th>User</th><th>System said</th><th>User says</th><th>Message</th></tr></thead>
+        <tbody>{reports.rows.map(row => <tr key={`${row.scanId}-${row.createdAt}`}>
+          <td className="nowrap">{fmt(row.createdAt)}</td>
+          <td>{row.email}</td>
+          <td>{row.reported ? row.reported[0] + row.reported.slice(1).toLowerCase() : '—'}</td>
+          <td>{row.expected[0] + row.expected.slice(1).toLowerCase()}</td>
+          <td>{row.shared && row.text ? <span className="report-text" title={row.text}>{row.text}</span> : <span className="muted">Not shared</span>}</td>
+        </tr>)}</tbody>
+      </table>{!reports.rows.length && <p>No reports yet.</p>}</div>}
+    </>}
+
+    {view === 'settings' && <>
+      {settingsError && <p role="alert" className="error-box">{settingsError}</p>}
+      {settingsLoading || !settings ? <p role="status">Loading settings...</p> : <form className="settings-form" onSubmit={submitSettings}>
+        <div className="settings-grid">
+          {SETTING_FIELDS.map(({ key, label, hint }) => (
+            <label className="settings-field" key={key}>{label}
+              <input type="number" min={1} value={settings[key] as number}
+                onChange={e => setSettings({ ...settings, [key]: Number(e.target.value) })} />
+              <span className="hint">{hint}</span>
+            </label>
+          ))}
+        </div>
+        <label className="settings-field">Announcement banner
+          <input type="text" maxLength={500} placeholder="Shown to every signed-in user" value={settings.announcement}
+            onChange={e => setSettings({ ...settings, announcement: e.target.value })} />
+          <span className="hint">Leave empty to hide the banner.</span>
+        </label>
+        <label className="dialog-check">
+          <input type="checkbox" checked={settings.maintenance}
+            onChange={e => setSettings({ ...settings, maintenance: e.target.checked })} />
+          Maintenance mode — pause all new scans
+        </label>
+        {settingsSaved && <p className="notice">Settings saved.</p>}
+        <button className="page-btn" type="submit" disabled={settingsBusy}>{settingsBusy ? 'Saving...' : 'Save settings'}</button>
+      </form>}
     </>}
   </section>;
 }

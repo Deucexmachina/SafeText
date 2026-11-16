@@ -4,8 +4,10 @@ import { extractUrls } from "../domain/extract.js";
 import { combineScanResults } from "../domain/verdicts.js";
 import { ProviderError } from "../providers/resilience.js";
 import { prepareOcrText } from '../providers/ocr/prepareText.js';
+import { applyDomainLists } from "../domain/domainLists.js";
+import { scamCategory } from "../domain/scamCategory.js";
 
-const services = { getScan, setState, saveExtraction, saveResult, ocr, analyzer, threatIntel };
+const services = { getScan, setState, saveExtraction, saveResult, ocr, analyzer, threatIntel, domainLists: applyDomainLists };
 export function normalizeText(text: string): string {
   return text.normalize("NFC").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u200B\uFEFF]/g, "").trim();
 }
@@ -44,7 +46,7 @@ async function drain(): Promise<void> {
 }
 
 export async function processScan(id: string, dependencies = services): Promise<void> {
-  const { getScan, setState, saveExtraction, saveResult, ocr, analyzer, threatIntel } = dependencies;
+  const { getScan, setState, saveExtraction, saveResult, ocr, analyzer, threatIntel, domainLists } = dependencies;
   const row = await getScan(id);
   if (!row || row.state !== "QUEUED") return;
 
@@ -104,10 +106,15 @@ export async function processScan(id: string, dependencies = services): Promise<
   const urls = [...new Set([...extractUrls(text), ...(aRes.status === "fulfilled" ? aRes.value.entities.urls : [])])];
   const [tRes] = await Promise.allSettled([threatIntel.lookup(urls).then(result => boundedProviderResult('Google Safe Browsing', result))]);
 
-  const { state, analysis, threatIntel: intel, incomplete } =
+  // Admin-curated lists override or replace provider verdicts on domains.
+  // A lookup failure must not lose the scan; provider results still apply.
+  const providerIntel = tRes.status === "fulfilled" ? tRes.value : null;
+  const intel = await domainLists(urls, providerIntel).catch(() => providerIntel);
+
+  const { state, analysis, threatIntel: finalIntel, incomplete } =
     combineScanResults(
       aRes.status === "fulfilled" ? aRes.value : null,
-      tRes.status === "fulfilled" ? tRes.value : null,
+      intel,
       text,
       senderId,
     );
@@ -115,11 +122,13 @@ export async function processScan(id: string, dependencies = services): Promise<
   await saveResult(id, {
     state,
     analysis,
-    threatIntel: intel,
+    threatIntel: finalIntel,
     incomplete,
     error: [
       ...(aRes.status === "rejected" ? [safeError(aRes.reason, "Kimi analysis failed; try again later.")] : []),
       ...(tRes.status === "rejected" ? [safeError(tRes.reason, "Google Safe Browsing link check failed; try again later.")] : []),
     ].join(" ") || null,
+    // Aggregate-only trend category; the text itself is never reported anywhere.
+    scamCategory: scamCategory(text),
   });
 }

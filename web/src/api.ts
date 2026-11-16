@@ -139,6 +139,7 @@ export interface AdminOverview {
   totalUsers: number;
   scansToday: number;
   verdictsToday: { safe: number; suspicious: number; malicious: number; inconclusive: number };
+  scamTrends7d: { category: string; count: number }[];
   topFlaggedDomains: { domain: string; hits: number }[];
   health: {
     failedToday: number;
@@ -146,6 +147,35 @@ export interface AdminOverview {
   };
 }
 export function getAdminOverview() { return request<AdminOverview>('/api/v1/admin/overview'); }
+export interface AppStatus { maintenance: boolean; announcement: string }
+export function getStatus() { return request<AppStatus>('/api/v1/status'); }
+export function reportScan(id: string, expectedVerdict: string, includeMessage: boolean) {
+  return request<{ ok: boolean }>(`/api/v1/scan/${encodeURIComponent(id)}/report`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedVerdict, includeMessage }),
+  });
+}
+export interface DomainRule { domain: string; list: "block" | "allow"; created_at: string }
+export function listDomains() { return request<{ rows: DomainRule[] }>('/api/v1/admin/domains'); }
+export function addDomain(domain: string, list: "block" | "allow") {
+  return request<DomainRule>('/api/v1/admin/domains', {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain, list }),
+  });
+}
+export function removeDomain(domain: string) {
+  return request<{ ok: boolean }>(`/api/v1/admin/domains/${encodeURIComponent(domain)}`, { method: "DELETE" });
+}
+export interface Report { scanId: string; createdAt: string; email: string; reported: string | null; expected: string; shared: boolean; text: string | null }
+export function listReports() {
+  return request<{ rows: Report[]; falseAlarms: number; missedScams: number }>('/api/v1/admin/reports');
+}
+export interface AdminSettings { scansPer15Min: number; maxScansPerUser: number; scanRetentionDays: number; maxUploadMb: number; maintenance: boolean; announcement: string }
+export function getAdminSettings() { return request<AdminSettings>('/api/v1/admin/settings'); }
+export function saveAdminSettings(body: Partial<AdminSettings>) {
+  return request<AdminSettings>('/api/v1/admin/settings', {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+}
 export interface AuditEntry { id: number; actorEmail: string; targetEmail: string; action: string; reason: string | null; createdAt: string }
 export function listAudit(offset = 0) {
   return request<{ audit: AuditEntry[] }>(`/api/v1/admin/audit?limit=20&offset=${offset}`);

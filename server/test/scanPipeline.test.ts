@@ -24,6 +24,7 @@ function harness(inputType: "text" | "image", text = "  Pay now https://example.
     ocr: { extract: async () => { ocrCalls++; return { text, senderId: null, confidence: 0 }; } },
     analyzer: { analyze: async (input: { text: string }) => { assert.equal(row.image_bytes, null); analyzed.push(input.text); return analysis; } },
     threatIntel: { lookup: async (urls: string[]): Promise<ThreatIntelResult> => { links.push(urls); return { urls: urls.map(url => ({ url, threat: null })) }; } },
+    domainLists: async (_urls: string[], intel: ThreatIntelResult | null) => intel,
   };
   return { row, deps, analyzed, links, get final() { return final; }, get ocrCalls() { return ocrCalls; } };
 }

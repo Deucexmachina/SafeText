@@ -3,7 +3,7 @@ import { ScanPage } from "./pages/ScanPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ScanDetailPage } from "./pages/ScanDetailPage";
 import { useEffect, useState } from "react";
-import { ApiError, currentUser, logout, type User } from "./api";
+import { ApiError, currentUser, getStatus, logout, type AppStatus, type User } from "./api";
 import { AuthPage } from "./pages/AuthPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { AdminPage } from "./pages/AdminPage";
@@ -13,6 +13,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [status, setStatus] = useState<AppStatus | null>(null);
+  useEffect(() => { getStatus().then(setStatus).catch(() => {}); }, []);
   async function loadSession() {
     setLoading(true); setError("");
     try { setUser((await currentUser()).user); }
@@ -41,6 +43,8 @@ export default function App() {
         </div>
       </header>
       <main>
+        {status?.maintenance && <p className="notice banner" role="status">SafeText is under maintenance — new scans are paused. Please check back soon.</p>}
+        {status?.announcement && <p className="notice banner" role="status">{status.announcement}</p>}
         {error && <p role="alert" className="error-box">{error} {!user && <button className="link-btn" onClick={loadSession}>Retry</button>}</p>}
         {loading ? <p>Loading your account...</p> : !user ? (!error && <Routes>
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />

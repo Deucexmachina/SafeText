@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { pool } from '../../db/pool.js';
 import { config } from '../../config.js';
+import { runtimeSettings, saveSettings } from '../../db/settings.js';
+import { normalizeDomain } from '../../domain/domainLists.js';
 import { requireAdmin, verifyPassword } from '../auth.js';
 import { HttpError } from '../problem.js';
 
@@ -161,10 +163,16 @@ adminRouter.get('/overview', async (_req, res, next) => {
       if (key in verdictsToday) verdictsToday[key] = row.count;
     }
     const stageFailures = Object.fromEntries(stageRows.map(r => [r.stage, r.failures]));
+    const { rows: trends } = await pool.query<{ category: string; count: number }>(
+      `SELECT scam_category AS category, count(*)::int AS count FROM scans
+       WHERE created_at >= now() - interval '7 days' AND scam_category IS NOT NULL
+         AND analysis->>'verdict' IN ('MALICIOUS','SUSPICIOUS')
+       GROUP BY 1 ORDER BY count DESC, 1`);
     res.json({
       totalUsers: totals.totalUsers,
       scansToday: totals.scansToday,
       verdictsToday,
+      scamTrends7d: trends,
       topFlaggedDomains: domains,
       health: {
         failedToday: totals.failedToday,
@@ -193,5 +201,88 @@ adminRouter.get('/audit', async (req, res, next) => {
     }
     const { limit, offset } = pagination(req.query);
     res.json({ audit: await auditRows(limit, offset) });
+  } catch (err) { next(err); }
+});
+
+// Admin-curated domain lists; applyDomainLists enforces them at scan time.
+adminRouter.get("/domains", async (_req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT domain, list, created_at FROM domain_lists ORDER BY list, domain");
+    res.json({ rows });
+  } catch (err) { next(err); }
+});
+
+adminRouter.post("/domains", async (req, res, next) => {
+  try {
+    if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
+    const list = req.body?.list;
+    if (list !== "block" && list !== "allow") throw new HttpError(400, "Invalid request", "list must be block or allow.");
+    const domain = normalizeDomain(String(req.body?.domain ?? ""));
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) throw new HttpError(400, "Invalid request", "Enter a domain like gcash.com.");
+    const { rows: [row] } = await pool.query(
+      `INSERT INTO domain_lists(domain, list, added_by) VALUES($1, $2, $3)
+       ON CONFLICT(domain) DO UPDATE SET list = $2, added_by = $3 RETURNING domain, list, created_at`,
+      [domain, list, req.user!.id]);
+    res.json(row);
+  } catch (err) { next(err); }
+});
+
+adminRouter.delete("/domains/:domain", async (req, res, next) => {
+  try {
+    const { rowCount } = await pool.query("DELETE FROM domain_lists WHERE domain = $1", [req.params.domain]);
+    if (!rowCount) throw new HttpError(404, "Domain not found", "It is not on any list.");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// Verdict reports; shared_text is null unless the reporting user consented.
+adminRouter.get("/reports", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.scan_id AS "scanId", r.created_at AS "createdAt", u.email, r.expected_verdict AS expected,
+              s.analysis->>'verdict' AS reported, r.shared_text IS NOT NULL AS shared, r.shared_text AS text
+       FROM scan_reports r JOIN scans s ON s.id = r.scan_id JOIN users u ON u.id = r.user_id
+       ORDER BY r.created_at DESC LIMIT 200`);
+    const { rows: [summary] } = await pool.query<{ false_alarms: number; missed_scams: number }>(
+      `SELECT count(*) FILTER (WHERE r.expected_verdict = 'SAFE' AND s.analysis->>'verdict' IN ('MALICIOUS','SUSPICIOUS'))::int AS false_alarms,
+              count(*) FILTER (WHERE r.expected_verdict IN ('MALICIOUS','SUSPICIOUS') AND s.analysis->>'verdict' = 'SAFE')::int AS missed_scams
+       FROM scan_reports r JOIN scans s ON s.id = r.scan_id`);
+    res.json({ rows, falseAlarms: summary.false_alarms, missedScams: summary.missed_scams });
+  } catch (err) { next(err); }
+});
+
+adminRouter.get("/settings", async (_req, res, next) => {
+  try { res.json(await runtimeSettings()); } catch (err) { next(err); }
+});
+
+adminRouter.put("/settings", async (req, res, next) => {
+  try {
+    if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
+    const b = req.body ?? {};
+    const entries: Record<string, string> = {};
+    const ints: [string, number, number, string][] = [
+      ["scansPer15Min", 1, 200, "scans_per_15min"],
+      ["maxScansPerUser", 1, 1000, "max_scans_per_user"],
+      ["scanRetentionDays", 1, 3650, "scan_retention_days"],
+      ["maxUploadMb", 1, 16, "max_upload_mb"],
+    ];
+    for (const [field, min, max, key] of ints) {
+      if (b[field] === undefined) continue;
+      const value = Number(b[field]);
+      if (!Number.isInteger(value) || value < min || value > max) {
+        throw new HttpError(400, "Invalid request", `${field} must be a whole number between ${min} and ${max}.`);
+      }
+      entries[key] = String(value);
+    }
+    if (b.maintenance !== undefined) entries.maintenance = b.maintenance === true ? "true" : "false";
+    if (b.announcement !== undefined) {
+      if (typeof b.announcement !== "string" || b.announcement.length > 500) {
+        throw new HttpError(400, "Invalid request", "announcement must be text up to 500 characters.");
+      }
+      entries.announcement = b.announcement;
+    }
+    await saveSettings(entries);
+    res.json(await runtimeSettings());
   } catch (err) { next(err); }
 });

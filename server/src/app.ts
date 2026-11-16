@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { maintainStorage } from './db/retention.js';
+import { runtimeSettings } from './db/settings.js';
 import { scansRouter } from "./http/routes/scans.js";
 import { HttpError, sendProblem } from "./http/problem.js";
 import { authRouter, checkOrigin, requireAuth } from "./http/auth.js";
@@ -33,6 +34,12 @@ export function createApp() {
   });
 
   app.get("/api/v1/health", (_req, res) => res.json({ status: "ok" }));
+  app.get("/api/v1/status", async (_req, res, next) => {
+    try {
+      const s = await runtimeSettings();
+      res.json({ maintenance: s.maintenance, announcement: s.announcement });
+    } catch (err) { next(err); }
+  });
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/admin", requireAuth, adminRouter);
   app.use("/api/v1", requireAuth, (_req, res, next) => {

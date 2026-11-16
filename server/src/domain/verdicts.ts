@@ -32,7 +32,9 @@ export function combineScanResults(
   const flagged = intel?.urls.find((u) => u.threat);
   if (flagged) {
     const host = hostnameOf(flagged.url) ?? flagged.url;
-    const reason = `Flagged by Google Safe Browsing (${host}: ${flagged.threat})`;
+    const reason = flagged.threat === "MANUAL_BLOCK"
+      ? `Domain is on the SafeText blocklist (${host})`
+      : `Flagged by Google Safe Browsing (${host}: ${flagged.threat})`;
     if (analysis) {
       analysis = {
         ...analysis,
