@@ -33,6 +33,7 @@ export function AdminPage() {
         : `${pendingUser.email} will be logged out and unable to sign in until you enable their account again. Their scan history will be preserved.`}
       confirmLabel={pendingUser.disabled ? 'Enable account' : 'Disable account'}
       busyLabel={pendingUser.disabled ? 'Enabling...' : 'Disabling...'} busy={busy}
+      danger={!pendingUser.disabled}
       onCancel={() => setPendingUser(null)} onConfirm={() => void toggle(pendingUser)}
     />}
     <h1>Account management</h1>

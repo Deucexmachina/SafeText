@@ -618,14 +618,14 @@ textarea:disabled {
 .admin-table-wrap tbody tr { cursor: default; }
 
 /* Shared in-app confirmation dialog */
-.confirm-dialog { width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; padding: 28px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text); box-shadow: 0 20px 70px #00000030; }
-.confirm-dialog::backdrop { background: #101c1866; backdrop-filter: blur(3px); }
-.confirm-symbol { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-bottom: 18px; border-radius: 12px; color: var(--accent); background: #edf6ef; }
+.confirm-dialog { width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; padding: 20px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--text); box-shadow: 0 8px 30px #00000026; }
+.confirm-dialog::backdrop { background: #101c1866; }
+.confirm-symbol { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-bottom: 14px; border-radius: 6px; color: var(--accent); background: #edf6ef; }
 .confirm-symbol-danger { color: var(--bad); background: #fff0f0; }
-.confirm-dialog h2 { margin: 0 0 10px; font-size: 22px; line-height: 1.3; }
-.confirm-dialog p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
-.confirm-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
-.confirm-actions button { min-height: 42px; padding: 10px 16px; border-radius: 7px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.confirm-dialog h2 { margin: 0 0 8px; font-size: 20px; line-height: 1.3; }
+.confirm-dialog p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.confirm-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.confirm-actions button { padding: 9px 16px; border-radius: 5px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .confirm-cancel { border: 1px solid var(--border); background: var(--card); color: var(--text); }
 .confirm-cancel:hover:not(:disabled) { background: var(--bg); }
 .confirm-submit { border: 1px solid var(--accent); background: var(--accent); color: #fff; }
