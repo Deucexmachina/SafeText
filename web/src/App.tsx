@@ -109,12 +109,11 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
   if (user) {
     // Logging out always returns to the landing page, from any screen.
     const signOutToLanding = async () => { if (await onSignOut()) navigate("/", { replace: true }); };
-    // The admin console keeps its existing light styling.
     const adminRoute = pathname.startsWith("/admin");
-    return <div className="lp ap" data-theme={adminRoute ? "light" : theme}>
+    return <div className="lp ap" data-theme={theme}>
       <a className="lp-skip" href="#main-content">Skip to content</a>
       <AppNav key={user.id} email={user.email} isAdmin={user.role === "admin"} theme={theme} onToggleTheme={toggleTheme}
-        showThemeToggle={!adminRoute} onSignOut={signOutToLanding} />
+        showThemeToggle onSignOut={signOutToLanding} />
       <main id="main-content" tabIndex={-1} className={adminRoute ? "ap-main ap-main-admin" : "ap-main"}>
         {(status?.maintenance || status?.announcement || error) && <div className="ap-notices">{notices}</div>}
         <Routes key={user.id}>

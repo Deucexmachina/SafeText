@@ -171,7 +171,7 @@
   margin: 0 auto;
   padding: 24px 16px calc(96px + env(safe-area-inset-bottom, 0px));
 }
-.lp .ap-main-admin { max-width: 1000px; }
+.lp .ap-main-admin { max-width: 1180px; }
 @media (min-width: 720px) {
   .lp .ap-main { padding: 36px 20px 64px; }
 }
