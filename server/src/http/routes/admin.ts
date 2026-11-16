@@ -1,29 +1,81 @@
 import { Router } from 'express';
 import { pool } from '../../db/pool.js';
-import { requireAdmin } from '../auth.js';
+import { requireAdmin, verifyPassword } from '../auth.js';
 import { HttpError } from '../problem.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAdmin);
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function pagination(query: Record<string, unknown>): { limit: number; offset: number } {
+  const limit = Number(query.limit ?? 50);
+  const offset = Number(query.offset ?? 0);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0) {
+    throw new HttpError(400, 'Invalid pagination', 'Use a limit from 1 to 100 and a non-negative integer offset.');
+  }
+  return { limit: Math.floor(limit), offset: Math.floor(offset) };
+}
+
+// Escaped for a literal ILIKE match so % and _ in the search text stay literal.
+const likeEscape = (value: string) => value.replace(/[\\%_]/g, ch => `\\${ch}`);
+
 adminRouter.get('/users', async (req, res, next) => {
   try {
-    const limit = Number(req.query.limit ?? 50);
-    const offset = Number(req.query.offset ?? 0);
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0) throw new HttpError(400, 'Invalid pagination', 'Use a limit from 1 to 100 and a non-negative integer offset.');
+    const { limit, offset } = pagination(req.query);
+    const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 254) : '';
+    const status = typeof req.query.status === 'string' ? req.query.status : '';
+    const from = typeof req.query.from === 'string' ? req.query.from : '';
+    const to = typeof req.query.to === 'string' ? req.query.to : '';
+    if (status && !['active', 'disabled'].includes(status)) throw new HttpError(400, 'Invalid filter', 'Status must be active or disabled.');
+    if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) throw new HttpError(400, 'Invalid filter', 'Dates must use YYYY-MM-DD.');
+
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (search) { params.push(`%${likeEscape(search)}%`); where.push(`u.email ILIKE $${params.length} ESCAPE '\\'`); }
+    if (status) { params.push(status === 'disabled'); where.push(`u.disabled = $${params.length}`); }
+    if (from) { params.push(from); where.push(`u.created_at >= $${params.length}::date`); }
+    if (to) { params.push(to); where.push(`u.created_at < $${params.length}::date + interval '1 day'`); }
+    params.push(limit, offset);
+
     const { rows } = await pool.query(
-      `SELECT u.id, u.email, u.role, u.disabled, u.created_at AS "createdAt",
+      `SELECT u.id, u.email, u.role, u.disabled, u.disabled_reason AS "disabledReason",
+         u.created_at AS "createdAt", u.last_login_at AS "lastLoginAt", u.last_active_at AS "lastActiveAt",
+         u.failed_logins AS "failedLogins", u.scan_rate_hits AS "scanRateHits",
          (SELECT count(*)::int FROM scans s WHERE s.user_id = u.id) AS "scanCount"
-       FROM users u ORDER BY u.created_at, u.id LIMIT $1 OFFSET $2`, [Math.floor(limit), offset]);
+       FROM users u ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       ORDER BY u.created_at, u.id LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
     res.json({ users: rows });
   } catch (err) { next(err); }
 });
 
+// Sensitive admin actions ask for the administrator's own password again, so a
+// stolen or unattended session cannot disable accounts on its own.
+async function confirmAdminPassword(adminId: string, password: unknown): Promise<void> {
+  if (typeof password !== 'string' || !password) {
+    throw new HttpError(400, 'Invalid request', 'Re-enter your password to confirm.');
+  }
+  const { rows } = await pool.query<{ password_hash: string }>(
+    'SELECT password_hash FROM users WHERE id = $1', [adminId]);
+  if (!rows[0] || !(await verifyPassword(password, rows[0].password_hash))) {
+    throw new HttpError(403, 'Confirmation failed', 'The password you entered is incorrect.');
+  }
+}
+
 adminRouter.patch('/users/:id', async (req, res, next) => {
   try {
+    const allowed = new Set(['disabled', 'reason', 'password']);
     if (!req.is('application/json') || typeof req.body?.disabled !== 'boolean' ||
-        Object.keys(req.body).some(key => key !== 'disabled')) throw new HttpError(400, 'Invalid request', 'Send only a boolean disabled field.');
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) throw new HttpError(404, 'Account not found', 'The account does not exist.');
+        Object.keys(req.body).some(key => !allowed.has(key))) {
+      throw new HttpError(400, 'Invalid request', 'Send disabled, an optional reason, and your password.');
+    }
+    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+    if (reason.length > 200) throw new HttpError(400, 'Invalid request', 'Keep the reason under 200 characters.');
+    if (req.body.disabled && !reason) throw new HttpError(400, 'Reason required', 'Give a reason so the user understands why the account was disabled.');
+    if (!UUID_RE.test(req.params.id)) throw new HttpError(404, 'Account not found', 'The account does not exist.');
+    await confirmAdminPassword(req.user!.id, req.body.password);
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -31,13 +83,69 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
       const { rows } = await client.query('SELECT role, disabled FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
       if (!rows[0]) throw new HttpError(404, 'Account not found', 'The account does not exist.');
       if (rows[0].role === 'admin') throw new HttpError(403, 'Access denied', 'The administrator cannot be disabled here.');
-      await client.query('UPDATE users SET disabled = $2 WHERE id = $1', [req.params.id, req.body.disabled]);
+      await client.query('UPDATE users SET disabled = $2, disabled_reason = $3 WHERE id = $1',
+        [req.params.id, req.body.disabled, req.body.disabled ? reason : null]);
       // Re-enabling never restores revoked sessions.
       await client.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
-      await client.query('INSERT INTO admin_audit(actor_id, target_id, action) VALUES($1, $2, $3)', [req.user!.id, req.params.id, req.body.disabled ? 'disable_user' : 'enable_user']);
+      await client.query('INSERT INTO admin_audit(actor_id, target_id, action, reason) VALUES($1, $2, $3, $4)',
+        [req.user!.id, req.params.id, req.body.disabled ? 'disable_user' : 'enable_user', reason || null]);
       await client.query('COMMIT');
       res.json({ ok: true });
     } catch (err) { await client.query('ROLLBACK'); throw err; }
     finally { client.release(); }
+  } catch (err) { next(err); }
+});
+
+// Ends every session for an account without disabling it.
+adminRouter.post('/users/:id/force-logout', async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) throw new HttpError(404, 'Account not found', 'The account does not exist.');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query('SELECT role FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
+      if (!rows[0]) throw new HttpError(404, 'Account not found', 'The account does not exist.');
+      if (rows[0].role === 'admin') throw new HttpError(403, 'Access denied', 'The administrator cannot be logged out here.');
+      await client.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
+      await client.query('INSERT INTO admin_audit(actor_id, target_id, action) VALUES($1, $2, $3)',
+        [req.user!.id, req.params.id, 'force_logout']);
+      await client.query('COMMIT');
+      res.json({ ok: true });
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
+  } catch (err) { next(err); }
+});
+
+interface AuditRow {
+  id: number; actorEmail: string; targetEmail: string;
+  action: string; reason: string | null; createdAt: Date;
+}
+
+async function auditRows(limit: number, offset: number): Promise<AuditRow[]> {
+  const { rows } = await pool.query<AuditRow>(
+    `SELECT aa.id, actor.email AS "actorEmail", target.email AS "targetEmail",
+       aa.action, aa.reason, aa.created_at AS "createdAt"
+     FROM admin_audit aa
+     JOIN users actor ON actor.id = aa.actor_id
+     JOIN users target ON target.id = aa.target_id
+     ORDER BY aa.created_at DESC, aa.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+  return rows;
+}
+
+adminRouter.get('/audit', async (req, res, next) => {
+  try {
+    if (req.query.format === 'csv') {
+      const rows = await auditRows(5000, 0);
+      const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+      const lines = ['time,actor,target,action,reason',
+        ...rows.map(r => [r.createdAt.toISOString(), r.actorEmail, r.targetEmail, r.action, r.reason ?? ''].map(csvCell).join(','))];
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="safetext-audit.csv"');
+      // BOM lets Excel open the UTF-8 CSV with correct encoding.
+      res.send(String.fromCharCode(0xfeff) + `${lines.join('\r\n')}\r\n`);
+      return;
+    }
+    const { limit, offset } = pagination(req.query);
+    res.json({ audit: await auditRows(limit, offset) });
   } catch (err) { next(err); }
 });

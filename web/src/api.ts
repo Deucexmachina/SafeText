@@ -105,12 +105,47 @@ export function deleteScan(id: string) {
 }
 
 export interface User { id: string; email: string; role: 'user' | 'admin' }
-export interface AdminUser extends User { disabled: boolean; createdAt: string; scanCount: number }
-export function listUsers(offset = 0) { return request<{ users: AdminUser[] }>(`/api/v1/admin/users?limit=20&offset=${offset}`); }
-export function setUserDisabled(id: string, disabled: boolean) {
+export interface AdminUser extends User {
+  disabled: boolean;
+  disabledReason: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+  lastActiveAt: string | null;
+  failedLogins: number;
+  scanRateHits: number;
+  scanCount: number;
+}
+export interface UserFilter { search: string; status: "" | "active" | "disabled"; from: string; to: string }
+export function listUsers(offset = 0, filter?: UserFilter) {
+  const params = new URLSearchParams({ limit: "20", offset: String(offset) });
+  if (filter?.search) params.set("search", filter.search);
+  if (filter?.status) params.set("status", filter.status);
+  if (filter?.from) params.set("from", filter.from);
+  if (filter?.to) params.set("to", filter.to);
+  return request<{ users: AdminUser[] }>(`/api/v1/admin/users?${params}`);
+}
+export function setUserDisabled(id: string, disabled: boolean, confirmation: { password: string; reason?: string }) {
   return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(id)}`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disabled }),
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ disabled, password: confirmation.password, ...(confirmation.reason ? { reason: confirmation.reason } : {}) }),
   });
+}
+export function forceLogoutUser(id: string) {
+  return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(id)}/force-logout`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: "{}",
+  });
+}
+export interface AuditEntry { id: number; actorEmail: string; targetEmail: string; action: string; reason: string | null; createdAt: string }
+export function listAudit(offset = 0) {
+  return request<{ audit: AuditEntry[] }>(`/api/v1/admin/audit?limit=20&offset=${offset}`);
+}
+export async function downloadAuditCsv() {
+  const res = await fetch('/api/v1/admin/audit?format=csv');
+  if (!res.ok) throw new ApiError(res.status, res.statusText, 'Could not export the audit log.');
+  const url = URL.createObjectURL(await res.blob());
+  const link = Object.assign(document.createElement('a'), { href: url, download: 'safetext-audit.csv' });
+  link.click();
+  URL.revokeObjectURL(url);
 }
 export function currentUser() { return request<{ user: User }>("/api/v1/auth/me"); }
 export function authenticate(action: "login" | "register", email: string, password: string) {

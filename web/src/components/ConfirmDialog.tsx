@@ -1,4 +1,9 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+
+interface ConfirmValues {
+  password: string;
+  reason: string;
+}
 
 interface Props {
   title: string;
@@ -8,16 +13,21 @@ interface Props {
   busy: boolean;
   danger?: boolean;
   mode?: "confirm" | "error";
-  onConfirm: () => void;
+  password?: boolean;
+  reason?: boolean;
+  error?: string | null;
+  onConfirm: (values: ConfirmValues) => void;
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ title, message, confirmLabel, busyLabel, busy, danger = false, mode = "confirm", onConfirm, onCancel }: Props) {
+export function ConfirmDialog({ title, message, confirmLabel, busyLabel, busy, danger = false, mode = "confirm", password = false, reason = false, error = null, onConfirm, onCancel }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const confirm = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const messageId = useId();
+  const [passwordValue, setPasswordValue] = useState("");
+  const [reasonValue, setReasonValue] = useState("");
 
   useEffect(() => {
     const element = dialog.current!;
@@ -25,6 +35,8 @@ export function ConfirmDialog({ title, message, confirmLabel, busyLabel, busy, d
     (cancel.current ?? confirm.current)?.focus();
     return () => element.close();
   }, []);
+
+  const missingFields = (password && !passwordValue) || (reason && !reasonValue.trim());
 
   return <dialog ref={dialog} className="confirm-dialog" aria-labelledby={titleId} aria-describedby={messageId} aria-busy={busy}
     onCancel={event => { event.preventDefault(); if (!busy) onCancel(); }}>
@@ -35,9 +47,25 @@ export function ConfirmDialog({ title, message, confirmLabel, busyLabel, busy, d
     </div>
     <h2 id={titleId}>{title}</h2>
     <p id={messageId}>{message}</p>
+    {reason && <div className="dialog-field">
+      <label className="field-label" htmlFor="dialog-reason">Reason</label>
+      <input id="dialog-reason" type="text" maxLength={200} disabled={busy}
+        placeholder="e.g. spamming scans" value={reasonValue}
+        onChange={event => setReasonValue(event.target.value)} />
+      <p className="hint">Shown to the user when they try to log in.</p>
+    </div>}
+    {password && <div className="dialog-field">
+      <label className="field-label" htmlFor="dialog-password">Your password</label>
+      <input id="dialog-password" type="password" autoComplete="current-password" disabled={busy}
+        value={passwordValue} onChange={event => setPasswordValue(event.target.value)} />
+      <p className="hint">Confirm with your own account password.</p>
+    </div>}
+    {error && <p role="alert" className="error-box">{error}</p>}
     <div className="confirm-actions">
       {mode === "confirm" && <button ref={cancel} type="button" className="confirm-cancel" disabled={busy} onClick={onCancel}>Cancel</button>}
-      <button ref={confirm} type="button" className={`confirm-submit${danger || mode === "error" ? " confirm-submit-danger" : ""}`} disabled={busy} onClick={onConfirm}>{busy ? busyLabel : confirmLabel}</button>
+      <button ref={confirm} type="button" className={`confirm-submit${danger || mode === "error" ? " confirm-submit-danger" : ""}`}
+        disabled={busy || missingFields}
+        onClick={() => onConfirm({ password: passwordValue, reason: reasonValue.trim() })}>{busy ? busyLabel : confirmLabel}</button>
     </div>
   </dialog>;
 }

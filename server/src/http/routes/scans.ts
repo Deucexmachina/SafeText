@@ -14,6 +14,7 @@ import {
 } from "../../db/scans.js";
 import { enqueueScan } from "../../queue/scanQueue.js";
 import { scanId } from "../../lib/ulid.js";
+import { pool } from "../../db/pool.js";
 import { HttpError } from "../problem.js";
 import { IMAGE_MIMES, validImage } from "../../providers/ocr/imageValidation.js";
 import { config } from '../../config.js';
@@ -29,7 +30,11 @@ scansRouter.get('/storage-policy', (_req, res) => res.json({
 }));
 const scanLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, keyGenerator: req => req.user!.id,
   standardHeaders: 'draft-7', legacyHeaders: false,
-  handler: (_req, res) => res.status(429).type('application/problem+json').json({ type: 'about:blank', title: 'Scan limit reached', status: 429, detail: 'You can submit up to 20 scans every 15 minutes. Please try again later.' }),
+  handler: (req, res) => {
+    // Repeated hits flag abusive accounts on the admin dashboard.
+    pool.query("UPDATE users SET scan_rate_hits = scan_rate_hits + 1 WHERE id = $1", [req.user!.id]).catch(() => {});
+    res.status(429).type('application/problem+json').json({ type: 'about:blank', title: 'Scan limit reached', status: 429, detail: 'You can submit up to 20 scans every 15 minutes. Please try again later.' });
+  },
 });
 
 scansRouter.post(

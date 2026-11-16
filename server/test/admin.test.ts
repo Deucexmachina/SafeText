@@ -55,22 +55,52 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
       assert.equal((await call('/scan/private', 'DELETE', undefined, operator.cookie)).status, 404);
     });
     await t.test('disable revokes sessions; enable requires new login; changes are audited', async () => {
-      assert.equal((await call(`/admin/users/${operator.id}`, 'PATCH', { disabled: true }, operator.cookie)).status, 403);
+      assert.equal((await call(`/admin/users/${operator.id}`, 'PATCH', { disabled: true, reason: 'test', password }, operator.cookie)).status, 403);
       assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true }, operator.cookie, 'https://evil.example')).status, 403);
       assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { role: 'admin', disabled: false }, operator.cookie)).status, 400);
-      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true }, operator.cookie)).status, 200);
+      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true, reason: 'spamming scans', password }, operator.cookie)).status, 200);
       assert.equal((await call('/auth/me', 'GET', undefined, regular.cookie)).status, 401);
       const disabledLogin = await call('/auth/login', 'POST', { email: 'regular@example.com', password });
       assert.equal(disabledLogin.status, 403);
-      assert.match((await disabledLogin.json() as { detail: string }).detail, /Your account is disabled/);
+      assert.match((await disabledLogin.json() as { detail: string }).detail, /Your account is disabled.*spamming scans/);
       assert.equal(disabledLogin.headers.get('set-cookie'), null);
       const wrongPassword = await call('/auth/login', 'POST', { email: 'regular@example.com', password: 'incorrect password 123' });
       assert.equal(wrongPassword.status, 401);
       assert.doesNotMatch((await wrongPassword.json() as { detail: string }).detail, /disabled/);
-      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: false }, operator.cookie)).status, 200);
+      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: false, password }, operator.cookie)).status, 200);
       assert.equal((await call('/auth/me', 'GET', undefined, regular.cookie)).status, 401);
       assert.equal((await call('/auth/login', 'POST', { email: 'regular@example.com', password })).status, 200);
       assert.equal((await pool.query('SELECT count(*)::int AS count FROM admin_audit')).rows[0].count, 2);
+    });
+    await t.test('confirmation password, force logout, filters, activity fields and audit export', async () => {
+      // The admin's own password is required before access changes.
+      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true, reason: 'spam', password: 'a wrong but long password' }, operator.cookie)).status, 403);
+      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true, password }, operator.cookie)).status, 400);
+      // Force logout ends sessions without disabling the account.
+      const relogin = await call('/auth/login', 'POST', { email: 'regular@example.com', password });
+      const reCookie = relogin.headers.get('set-cookie')!.split(';')[0];
+      assert.equal((await call(`/admin/users/${regular.id}/force-logout`, 'POST', {}, operator.cookie)).status, 200);
+      assert.equal((await call('/auth/me', 'GET', undefined, reCookie)).status, 401);
+      const listed = await (await call('/admin/users', 'GET', undefined, operator.cookie)).json() as { users: { email: string; lastLoginAt: string | null; failedLogins: number; scanRateHits: number }[] };
+      const regularRow = listed.users.find(u => u.email === 'regular@example.com')!;
+      assert(regularRow.lastLoginAt !== null && regularRow.failedLogins === 0 && regularRow.scanRateHits === 0);
+      // Failed logins accumulate on the account and reset on success.
+      assert.equal((await call('/auth/login', 'POST', { email: 'regular@example.com', password: 'a wrong but long password' })).status, 401);
+      assert.equal((await pool.query('SELECT failed_logins FROM users WHERE id = $1', [regular.id])).rows[0].failed_logins, 1);
+      assert.equal((await call('/auth/login', 'POST', { email: 'regular@example.com', password })).status, 200);
+      assert.equal((await pool.query('SELECT failed_logins FROM users WHERE id = $1', [regular.id])).rows[0].failed_logins, 0);
+      // Search and status filters narrow the account list.
+      const filtered = await (await call('/admin/users?status=active&search=regular', 'GET', undefined, operator.cookie)).json() as { users: { email: string }[] };
+      assert.deepEqual(filtered.users.map(u => u.email), ['regular@example.com']);
+      assert.equal((await call('/admin/users?status=bogus', 'GET', undefined, operator.cookie)).status, 400);
+      // The audit log lists actions with reasons and exports as CSV.
+      const audit = (await (await call('/admin/audit', 'GET', undefined, operator.cookie)).json() as { audit: { action: string; reason: string | null }[] }).audit;
+      assert(audit.some(a => a.action === 'force_logout'));
+      assert(audit.some(a => a.action === 'disable_user' && a.reason === 'spamming scans'));
+      const csv = await call('/admin/audit?format=csv', 'GET', undefined, operator.cookie);
+      assert.match(csv.headers.get('content-type')!, /text\/csv/);
+      assert.match(await csv.text(), /force_logout/);
+      assert.equal((await call('/admin/audit', 'GET', undefined, reCookie)).status, 401);
     });
     await t.test('API sends security headers and rejects oversized JSON without details', async () => {
       const health = await call('/health');

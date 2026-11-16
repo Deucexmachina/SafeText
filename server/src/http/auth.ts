@@ -40,6 +40,11 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
     );
     if (!rows[0]) throw new HttpError(401, "Login required", "Please log in to continue.");
     req.user = rows[0];
+    // Throttled write keeps one UPDATE per 15 minutes per account.
+    pool.query(
+      "UPDATE users SET last_active_at = now() WHERE id = $1 AND (last_active_at IS NULL OR last_active_at < now() - interval '15 minutes')",
+      [rows[0].id],
+    ).catch(() => {});
     next();
   } catch (err) { next(err); }
 };
@@ -112,12 +117,20 @@ for (const action of ["register", "login"] as const) {
         } catch (err) { await client.query('ROLLBACK'); throw err; }
         finally { client.release(); }
       } else {
-        const { rows } = await pool.query<User & { password_hash: string; disabled: boolean }>("SELECT id, email, role, disabled, password_hash FROM users WHERE email = $1", [email]);
+        const { rows } = await pool.query<User & { password_hash: string; disabled: boolean; disabled_reason: string | null }>(
+          "SELECT id, email, role, disabled, disabled_reason, password_hash FROM users WHERE email = $1", [email]);
         // Perform the expensive derivation even for unknown accounts.
         const valid = await verifyPassword(password, rows[0]?.password_hash ?? `${"0".repeat(32)}:${"0".repeat(128)}`);
-        if (!rows[0] || !valid) throw new HttpError(401, "Login failed", "Email or password is incorrect.");
-        if (rows[0].disabled) throw new HttpError(403, "Account disabled", "Your account is disabled. Please contact the administrator for assistance.");
+        if (!rows[0] || !valid) {
+          if (rows[0]) await pool.query("UPDATE users SET failed_logins = failed_logins + 1 WHERE id = $1", [rows[0].id]);
+          throw new HttpError(401, "Login failed", "Email or password is incorrect.");
+        }
+        if (rows[0].disabled) {
+          const reason = rows[0].disabled_reason ? ` Reason given: ${rows[0].disabled_reason}` : "";
+          throw new HttpError(403, "Account disabled", `Your account is disabled.${reason} Please contact the administrator for assistance.`);
+        }
         user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
+        await pool.query("UPDATE users SET failed_logins = 0, last_login_at = now() WHERE id = $1", [user.id]);
       }
       const token = randomBytes(32).toString("hex");
       const client = await pool.connect();

@@ -15,6 +15,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT fal
 -- Successful password resets are capped per rolling day.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_window TIMESTAMPTZ;
+-- Activity and abuse signals surfaced on the admin dashboard.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_logins INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS scan_rate_hits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_reason TEXT;
 -- The product has one administrator; concurrent promotions cannot create two.
 CREATE UNIQUE INDEX IF NOT EXISTS users_single_admin ON users(role) WHERE role = 'admin';
 
@@ -25,6 +31,7 @@ CREATE TABLE IF NOT EXISTS admin_audit (
   action TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE admin_audit ADD COLUMN IF NOT EXISTS reason TEXT;
 
 CREATE TABLE IF NOT EXISTS auth_attempts (
   key_hash TEXT PRIMARY KEY,
