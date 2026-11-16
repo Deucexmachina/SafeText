@@ -3,10 +3,12 @@ import { config } from "./config.js";
 import { migrate } from "./db/migrate.js";
 import { resetStuckScans } from "./db/scans.js";
 import { enqueueScan } from "./queue/scanQueue.js";
+import { emailSender } from './providers/index.js';
 import { maintainStorage } from './db/retention.js';
 
 async function main() {
   await migrate();
+  if (!emailSender.configured) console.warn('Password-reset email is unavailable. Configure BREVO_API_KEY and a verified EMAIL_FROM for Render.');
   await maintainStorage();
 
   // Re-queue any scans left mid-flight by a previous shutdown.

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, authenticate, type User } from "../api";
+import { authenticate, type User } from "../api";
 import { PasswordInput } from "../components/PasswordInput";
 
 export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
@@ -9,7 +9,6 @@ export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [loginFailed, setLoginFailed] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault(); setError("");
     if (!email.trim() || !password) { setError("Enter your email and password."); return; }
@@ -17,7 +16,6 @@ export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
     setBusy(true);
     try { onLogin((await authenticate(action, email, password)).user); }
     catch (err) {
-      if (action === "login" && err instanceof ApiError && err.status === 401) setLoginFailed(true);
       setError(err instanceof Error ? err.message : "Unable to reach the server.");
     }
     finally { setBusy(false); }
@@ -31,11 +29,11 @@ export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
       <input id="email" type="email" autoComplete="email" maxLength={254} required value={email} onChange={e => setEmail(e.target.value)} disabled={busy} />
       <PasswordInput id="password" label="Password" value={password} onChange={setPassword} disabled={busy} autoComplete={action === "login" ? "current-password" : "new-password"} />
       {action === "register" && <p className="hint">Use 12 to 128 characters.</p>}
-      {action === "login" && loginFailed && <p className="forgot-row"><Link to="/forgot-password">Forgot password?</Link></p>}
+      {action === "login" && <p className="forgot-row"><Link to="/forgot-password">Forgot password?</Link></p>}
       {error && <p role="alert" className="error-box">{error}</p>}
       <button className="btn-primary" disabled={busy}>{busy ? "Please wait..." : action === "login" ? "Log in" : "Create account"}</button>
     </form>
-    <button className="link-btn auth-toggle" disabled={busy} onClick={() => { setAction(action === "login" ? "register" : "login"); setError(""); setPassword(""); setLoginFailed(false); }}>
+    <button className="link-btn auth-toggle" disabled={busy} onClick={() => { setAction(action === "login" ? "register" : "login"); setError(""); setPassword(""); }}>
       {action === "login" ? "New here? Create an account" : "Already have an account? Log in"}
     </button>
   </section>;

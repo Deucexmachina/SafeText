@@ -46,6 +46,7 @@ export const config = {
   // smtps://user%40gmail.com:app-password@smtp.gmail.com — without it,
   // EMAIL_DEV_LOG=1 prints reset emails to the server console (dev only).
   smtpUrl: process.env.SMTP_URL ?? "",
+  brevoApiKey: process.env.BREVO_API_KEY?.trim() ?? "",
   emailFrom: process.env.EMAIL_FROM ?? "SafeText <no-reply@safetext.local>",
   emailDevLog: process.env.EMAIL_DEV_LOG === "1" || process.env.EMAIL_DEV_LOG === "true",
 };

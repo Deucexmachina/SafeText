@@ -267,6 +267,70 @@ physical size and restore history may not drop immediately. Do not disable TLS
 or run `VACUUM FULL` as a routine fix. These application limits leave headroom
 but do not guarantee that hosting quotas or API budgets can never be exceeded.
 
+## Configure password reset email
+
+The Render website address stays `https://safetext-nano.onrender.com`. Email is
+sent by a separate provider. Render Free blocks standard SMTP ports, so use the
+new Brevo HTTPS adapter instead of Gmail SMTP. A verified sender mailbox can be
+used for the class demo without purchasing a website domain.
+[Render SMTP restrictions](https://render.com/docs/free).
+
+1. First commit and push the password-reset changes to `main`. Wait for GitHub CI
+   and the Render deployment to succeed.
+2. Create a [Brevo](https://www.brevo.com) account, choose its free option if
+   available for your account, verify your login email, and complete the requested
+   account/transactional-email activation steps.
+3. In Brevo open **Settings > Senders, Domains, IPs > Senders > Add a sender**.
+   Use **SafeText** as the sender name and a mailbox your group controls as the
+   sender email. Confirm the verification code sent to that mailbox. For a Gmail
+   sender, authentication warnings are expected; a domain you control can be
+   authenticated later to improve deliverability. Do not attempt to authenticate
+   Render's `onrender.com` domain.
+   [Brevo sender verification](https://help.brevo.com/hc/en-us/articles/208836149-Create-a-new-sender-From-name-and-From-email).
+4. In Brevo's **Settings > SMTP & API > API Keys & MCP** section, generate a key
+   named `SafeText Render`. Choose an ordinary API key with access to send
+   transactional emails, not an SMTP or MCP key. Keep it private.
+   [Brevo API key instructions](https://help.brevo.com/hc/en-us/articles/209467485-Create-and-manage-your-API-keys).
+5. In [Render](https://dashboard.render.com), open **safetext-nano > Environment**.
+   Add or update:
+
+   | Key | Value |
+   | --- | --- |
+   | `BREVO_API_KEY` | The private Brevo API key |
+   | `EMAIL_FROM` | `SafeText <YOUR-VERIFIED-EMAIL>` using the exact verified sender address |
+   | `NODE_ENV` | `production` |
+   | `APP_ORIGIN` | `https://safetext-nano.onrender.com` without a trailing slash |
+
+   Enter values directly without wrapping quotes. Remove `EMAIL_DEV_LOG` and any
+   unused `SMTP_URL`. The new HTTPS key takes precedence over old SMTP settings.
+   Leave `DATABASE_URL` and the scan-provider keys unchanged. No Neon changes,
+   Gmail app password, new website domain, or additional server are needed.
+6. Click **Save, rebuild, and deploy** or the equivalent save-and-deploy option.
+   If saving does not deploy automatically, use **Manual Deploy > Deploy latest
+   commit**. Wait for **Live**.
+7. Open the deployed website in a logged-out browser, or go directly to
+   <https://safetext-nano.onrender.com/forgot-password>. Use an email already
+   registered on the deployed website. The sender mailbox and reset recipient
+   are separate: the code goes to the registered account asking to reset.
+8. Check the recipient inbox and spam folder, verify the newest six-digit code
+   within five minutes, and choose a new password of 12 to 128 characters. Confirm
+   the new password works, the old one fails, and previous sessions are signed out.
+
+Codes are single-use. Wait 60 seconds before resending; the newest code replaces
+older codes. After eight wrong guesses, request another code. Successful resets
+are capped at three per rolling day. An expired code at the password step can
+be replaced using **Request a new code**.
+
+If the page says **Password reset unavailable**, check that both email variables
+are configured and `EMAIL_FROM` is a real address rather than the `.local` default.
+If no email arrives after an apparently successful request, inspect **Brevo >
+Transactional > Logs** and **Render > Logs**. Check the API key, verified sender,
+account activation, sending quota, bounced/blocked recipients, and spam folder.
+Sanitized Render warnings may include 401 (key), 403 (permissions/account/sender),
+429 (quota/rate limit), or a provider server error. A generic success response
+protects account privacy and does not prove that a mailbox received the email.
+Never share the API key, reset code, or a screenshot showing secret values.
+
 ## Give the chosen account admin access
 
 The hosted database begins without an admin. Register `safetextadmin@gmail.com`

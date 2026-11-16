@@ -41,6 +41,8 @@ export function ForgotPasswordPage() {
       await forgotPassword(email.trim());
       setStep("code");
       setCode("");
+      setPassword("");
+      setConfirm("");
       setResendIn(60);
     } catch (err) {
       setError(message(err));
@@ -127,8 +129,8 @@ export function ForgotPasswordPage() {
         <>
           <h1>Check your email</h1>
           <p className="muted">
-            If an account exists for {email}, we sent a 6-digit code. It
-            expires in 5 minutes.
+            If an enabled account exists for {email}, a 6-digit code should arrive shortly.
+            Check your spam folder too. The code expires in 5 minutes.
           </p>
           <form onSubmit={verify} noValidate>
             <label className="field-label" htmlFor="code">
@@ -209,6 +211,8 @@ export function ForgotPasswordPage() {
               {busy ? "Saving…" : "Reset password"}
             </button>
           </form>
+          <p className="hint">Code expired? <button className="link-btn" disabled={busy || resendIn > 0}
+            onClick={() => void requestCode()}>{resendIn > 0 ? `Request a new code in ${resendIn}s` : 'Request a new code'}</button></p>
         </>
       )}
 

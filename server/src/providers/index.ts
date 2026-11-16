@@ -5,10 +5,7 @@ import type { UrlThreatIntel } from "./threatintel/UrlThreatIntel.js";
 import { LlmWhispererOcrProvider } from "./ocr/LlmWhispererOcrProvider.js";
 import { KimiScamAnalyzer } from "./analyzer/KimiScamAnalyzer.js";
 import { GoogleSafeBrowsingThreatIntel } from "./threatintel/GoogleSafeBrowsingThreatIntel.js";
-import type { EmailSender } from "./email/EmailSender.js";
-import { SmtpEmailSender } from "./email/SmtpEmailSender.js";
-import { DevEmailSender } from "./email/DevEmailSender.js";
-import { DisabledEmailSender } from "./email/DisabledEmailSender.js";
+import { createEmailSender } from './email/createEmailSender.js';
 
 export const ocr: OcrProvider = new LlmWhispererOcrProvider({
   apiKey: config.llmWhispererApiKey,
@@ -22,10 +19,4 @@ export const threatIntel: UrlThreatIntel = new GoogleSafeBrowsingThreatIntel({
   apiKey: config.safeBrowsingApiKey,
 });
 
-// Password-reset email: real SMTP when configured, console-backed outbox for
-// development/tests, otherwise a sender that logs a clear warning.
-export const emailSender: EmailSender = config.smtpUrl
-  ? new SmtpEmailSender({ smtpUrl: config.smtpUrl, from: config.emailFrom })
-  : config.emailDevLog
-    ? new DevEmailSender()
-    : new DisabledEmailSender();
+export const emailSender = createEmailSender({ ...config, production: config.secureCookies });

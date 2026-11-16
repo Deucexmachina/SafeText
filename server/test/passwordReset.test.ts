@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { test } from "node:test";
 import { Pool } from "pg";
 
-test("password reset: emailed code, verify, single-use reset, session revocation", async () => {
+test("password reset: emailed code, verify, single-use reset, session revocation", async t => {
   // A fresh schema keeps tests away from development accounts and scan data.
   const url = new URL(process.env.TEST_DATABASE_URL ?? "postgres://safetext:safetext@localhost:5432/safetext");
   const admin = new Pool({ connectionString: url.href });
@@ -14,6 +14,7 @@ test("password reset: emailed code, verify, single-use reset, session revocation
   process.env.DATABASE_URL = url.href;
   // Capture email in the dev outbox instead of delivering it.
   process.env.SMTP_URL = "";
+  process.env.BREVO_API_KEY = "";
   process.env.EMAIL_DEV_LOG = "1";
   const { pool } = await import("../src/db/pool.js");
   const { migrate } = await import("../src/db/migrate.js");
@@ -126,6 +127,116 @@ test("password reset: emailed code, verify, single-use reset, session revocation
       await call("/auth/verify-reset-code", "POST", { email: "third@example.com", code: thirdWrong });
     }
     assert.equal((await call("/auth/verify-reset-code", "POST", { email: "third@example.com", code: thirdCode })).status, 400);
+
+    await t.test('missing email configuration returns the same actionable 503 for all addresses', async () => {
+      await pool.query('DELETE FROM auth_attempts');
+      const descriptor = Object.getOwnPropertyDescriptor(emailSender, 'configured')!;
+      Object.defineProperty(emailSender, 'configured', { value: false, configurable: true });
+      try {
+        const known = await call('/auth/forgot-password', 'POST', { email });
+        const unknown = await call('/auth/forgot-password', 'POST', { email: 'unknown@example.com' });
+        assert.equal(known.status, 503); assert.equal(unknown.status, 503);
+        const body = await known.json(); assert.deepEqual(await unknown.json(), body);
+        assert.match((body as { detail: string }).detail, /temporarily unavailable/);
+      } finally { Object.defineProperty(emailSender, 'configured', descriptor); }
+    });
+
+    await t.test('concurrent resend requests send one email and concurrent guesses burn every attempt', async () => {
+      await pool.query('DELETE FROM auth_attempts');
+      await pool.query('DELETE FROM password_resets');
+      const before = outbox.sent.length;
+      const requests = await Promise.all([1, 2].map(() => call('/auth/forgot-password', 'POST', { email })));
+      assert(requests.every(response => response.status === 200));
+      assert.equal(outbox.sent.length, before + 1);
+      const current = codeOf(outbox.sent.at(-1)!);
+      const wrong = current === '000000' ? '000001' : '000000';
+      const guesses = await Promise.all(Array.from({ length: 8 }, () => call('/auth/verify-reset-code', 'POST', { email, code: wrong })));
+      assert(guesses.every(response => response.status === 400));
+      const stored = (await pool.query('SELECT attempts, used_at FROM password_resets')).rows[0];
+      assert.equal(stored.attempts, 8); assert(stored.used_at);
+      assert.equal((await call('/auth/reset-password', 'POST', { email, code: current, password })).status, 400);
+    });
+
+    await t.test('delivery failure removes only its undelivered code, logs no secrets, and allows retry', async () => {
+      await pool.query('DELETE FROM auth_attempts'); await pool.query('DELETE FROM password_resets');
+      const originalSend = emailSender.sendPasswordResetCode;
+      const originalWarn = console.warn;
+      const warnings: unknown[][] = [];
+      let failedCode = '';
+      emailSender.sendPasswordResetCode = async input => { failedCode = input.code; throw new Error(`private-smtp-credential ${input.to} ${input.code}`); };
+      console.warn = (...args: unknown[]) => { warnings.push(args); };
+      try {
+        assert.equal((await call('/auth/forgot-password', 'POST', { email })).status, 200);
+        assert.equal((await pool.query('SELECT * FROM password_resets')).rowCount, 0);
+        assert.doesNotMatch(JSON.stringify(warnings), /private-smtp-credential|reset@example/);
+        assert(!JSON.stringify(warnings).includes(failedCode));
+      } finally { emailSender.sendPasswordResetCode = originalSend; console.warn = originalWarn; }
+      const before = outbox.sent.length;
+      assert.equal((await call('/auth/forgot-password', 'POST', { email })).status, 200);
+      assert.equal(outbox.sent.length, before + 1);
+      const current = codeOf(outbox.sent.at(-1)!);
+      assert.equal((await call('/auth/verify-reset-code', 'POST', { email, code: current })).status, 200);
+    });
+
+    await t.test('an old failed email cannot delete a newer code', async () => {
+      await pool.query('DELETE FROM auth_attempts'); await pool.query('DELETE FROM password_resets');
+      const originalSend = emailSender.sendPasswordResetCode;
+      const originalWarn = console.warn;
+      emailSender.sendPasswordResetCode = async () => {
+        await pool.query("UPDATE password_resets SET code_hash = 'newer-request-hash'");
+        throw new Error('mock delivery failure');
+      };
+      console.warn = () => {};
+      try {
+        assert.equal((await call('/auth/forgot-password', 'POST', { email })).status, 200);
+        assert.equal((await pool.query('SELECT code_hash FROM password_resets')).rows[0].code_hash, 'newer-request-hash');
+      } finally { emailSender.sendPasswordResetCode = originalSend; console.warn = originalWarn; }
+    });
+
+    await t.test('concurrent resets consume one code once and cannot re-enable a disabled account', async () => {
+      await pool.query('DELETE FROM auth_attempts'); await pool.query('DELETE FROM password_resets');
+      await pool.query('UPDATE users SET password_reset_count = 0, password_reset_window = NULL WHERE email = $1', [email]);
+      await call('/auth/forgot-password', 'POST', { email });
+      const current = codeOf(outbox.sent.at(-1)!);
+      const requests = await Promise.all([1, 2].map(() => call('/auth/reset-password', 'POST', { email, code: current, password: newPassword })));
+      assert.deepEqual(requests.map(response => response.status).sort(), [200, 400]);
+      await pool.query("UPDATE password_resets SET created_at = now() - interval '2 minutes'");
+      await call('/auth/forgot-password', 'POST', { email });
+      const disabledCode = codeOf(outbox.sent.at(-1)!);
+      await pool.query('UPDATE users SET disabled = true WHERE email = $1', [email]);
+      assert.equal((await call('/auth/reset-password', 'POST', { email, code: disabledCode, password })).status, 400);
+      assert.equal((await pool.query('SELECT disabled FROM users WHERE email = $1', [email])).rows[0].disabled, true);
+    });
+
+    await t.test('a login already verifying the old password cannot mint a session after reset', async () => {
+      await pool.query('DELETE FROM auth_attempts');
+      const raceEmail = 'login-race@example.com';
+      assert.equal((await call('/auth/register', 'POST', { email: raceEmail, password })).status, 201);
+      const { hashPassword } = await import('../src/http/auth.js');
+      const replacement = await hashPassword(newPassword);
+      const locker = await pool.connect();
+      let pending: Promise<Response> | undefined;
+      try {
+        await locker.query('BEGIN');
+        const { rows: [account] } = await locker.query('SELECT id FROM users WHERE email = $1 FOR UPDATE', [raceEmail]);
+        const pid = (await locker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+        pending = call('/auth/login', 'POST', { email: raceEmail, password });
+        // Wait until the login's post-verification write reaches our row lock.
+        let blocked = false;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          blocked = (await pool.query(`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+            WHERE $1 = ANY(pg_blocking_pids(pid))) AS blocked`, [pid])).rows[0].blocked;
+          if (blocked) break;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        assert(blocked, 'login must be in flight while its password is replaced');
+        await locker.query('UPDATE users SET password_hash = $2 WHERE id = $1', [account.id, replacement]);
+        await locker.query('DELETE FROM sessions WHERE user_id = $1', [account.id]);
+        await locker.query('COMMIT');
+      } finally { await locker.query('ROLLBACK'); locker.release(); }
+      assert.equal((await pending!).status, 401);
+      assert.equal((await pool.query('SELECT count(*)::int AS count FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = $1', [raceEmail])).rows[0].count, 0);
+    });
   } finally {
     await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
     await pool.end();

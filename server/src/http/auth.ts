@@ -6,6 +6,8 @@ import { config } from "../config.js";
 import { HttpError } from "./problem.js";
 import { emailSender } from "../providers/index.js";
 import { sleep } from "../lib/sleep.js";
+import type { PoolClient } from 'pg';
+import { EmailDeliveryError } from '../providers/email/BrevoEmailSender.js';
 
 const derive = promisify(scrypt);
 const cookieName = "safetext_session";
@@ -99,8 +101,10 @@ for (const action of ["register", "login"] as const) {
         throw new HttpError(400, "Invalid credentials", "Enter a valid email and a password of 12 to 128 characters.");
       }
       let user: User;
+      let authenticatedHash: string;
       if (action === "register") {
         const hash = await hashPassword(password);
+        authenticatedHash = hash;
         const client = await pool.connect();
         try {
         await client.query('BEGIN');
@@ -130,6 +134,7 @@ for (const action of ["register", "login"] as const) {
           throw new HttpError(403, "Account disabled", `Your account is disabled.${reason} Please contact the administrator for assistance.`);
         }
         user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
+        authenticatedHash = rows[0].password_hash;
         await pool.query("UPDATE users SET failed_logins = 0, last_login_at = now() WHERE id = $1", [user.id]);
       }
       const token = randomBytes(32).toString("hex");
@@ -137,7 +142,12 @@ for (const action of ["register", "login"] as const) {
       try {
       await client.query('BEGIN');
       // Serialize session issuance for this account and retain at most five devices.
-      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [user.id]);
+      const { rows: [current] } = await client.query<{ password_hash: string; disabled: boolean }>(
+        'SELECT password_hash, disabled FROM users WHERE id = $1 FOR UPDATE', [user.id]);
+      // A reset/disable may have completed while password verification was running.
+      if (!current || current.disabled || current.password_hash !== authenticatedHash) {
+        throw new HttpError(401, 'Login failed', 'Your account changed while logging in. Please log in again.');
+      }
       await client.query("DELETE FROM sessions WHERE token_hash = $1 OR expires_at <= now()", [tokenHash(req)]);
       await client.query(`DELETE FROM sessions WHERE token_hash IN (
         SELECT token_hash FROM sessions WHERE user_id = $1 ORDER BY expires_at DESC, token_hash DESC OFFSET 4)`, [user.id]);
@@ -165,29 +175,32 @@ function resetCodeHash(userId: string, code: string): string {
 // attempts and a code dies after MAX_CODE_ATTEMPTS. Callers turn every failure
 // into the same generic error so nothing about the account is revealed.
 async function validateResetCode(
+  client: PoolClient,
   email: string,
   code: string,
 ): Promise<{ ok: boolean; userId?: string }> {
-  const { rows } = await pool.query<{ id: string }>(
-    "SELECT id FROM users WHERE email = $1 AND NOT disabled",
+  const { rows } = await client.query<{ id: string }>(
+    "SELECT id FROM users WHERE email = $1 AND NOT disabled FOR UPDATE",
     [email],
   );
   const user = rows[0];
   if (!user) return { ok: false };
-  const { rows: [row] } = await pool.query<{
+  const { rows: [row] } = await client.query<{
     code_hash: string; expires_at: Date; used_at: Date | null; attempts: number;
   }>(
-    "SELECT code_hash, expires_at, used_at, attempts FROM password_resets WHERE user_id = $1",
+    "SELECT code_hash, expires_at, used_at, attempts FROM password_resets WHERE user_id = $1 FOR UPDATE",
     [user.id],
   );
   if (!row || row.used_at || row.expires_at.getTime() <= Date.now() || row.attempts >= MAX_CODE_ATTEMPTS) {
     return { ok: false };
   }
-  if (timingSafeEqual(Buffer.from(row.code_hash), Buffer.from(resetCodeHash(user.id, code)))) {
+  const expected = Buffer.from(resetCodeHash(user.id, code));
+  const actual = Buffer.from(row.code_hash);
+  if (actual.length === expected.length && timingSafeEqual(actual, expected)) {
     return { ok: true, userId: user.id };
   }
   const attempts = row.attempts + 1;
-  await pool.query(
+  await client.query(
     `UPDATE password_resets SET attempts = $2::int,
        used_at = CASE WHEN $2::int >= $3::int THEN now() ELSE used_at END
      WHERE user_id = $1`,
@@ -205,25 +218,40 @@ authRouter.post("/forgot-password", limiter, async (req, res, next) => {
     if (!EMAIL_RE.test(email) || email.length > 254) {
       throw new HttpError(400, "Invalid request", "Enter a valid email address.");
     }
-    const { rows } = await pool.query<{ id: string; disabled: boolean }>(
-      "SELECT id, disabled FROM users WHERE email = $1", [email]);
-    const user = rows[0];
-    if (user && !user.disabled) {
-      const { rows: [existing] } = await pool.query<{ created_at: Date }>(
-        "SELECT created_at FROM password_resets WHERE user_id = $1", [user.id]);
-      const coolingDown = !!existing && Date.now() - existing.created_at.getTime() < RESEND_COOLDOWN_MS;
-      if (!coolingDown) {
-        const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
-        await pool.query(
+    // Configuration is global: the same 503 for every address reveals no account information.
+    if (!emailSender.configured) throw new HttpError(503, 'Password reset unavailable', 'Password reset email is temporarily unavailable. Contact the site administrator.');
+    let delivery: { userId: string; code: string; hash: string } | undefined;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: [user] } = await client.query<{ id: string; disabled: boolean }>(
+        'SELECT id, disabled FROM users WHERE email = $1 FOR UPDATE', [email]);
+      if (user && !user.disabled) {
+        const { rows: [existing] } = await client.query<{ created_at: Date }>(
+          'SELECT created_at FROM password_resets WHERE user_id = $1', [user.id]);
+        const coolingDown = !!existing && Date.now() - existing.created_at.getTime() < RESEND_COOLDOWN_MS;
+        if (!coolingDown) {
+          const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+          const hash = resetCodeHash(user.id, code);
+          await client.query(
           `INSERT INTO password_resets(user_id, code_hash, expires_at) VALUES($1, $2, $3)
            ON CONFLICT(user_id) DO UPDATE
              SET code_hash = $2, expires_at = $3, used_at = NULL, attempts = 0, created_at = now()`,
-          [user.id, resetCodeHash(user.id, code), new Date(Date.now() + CODE_TTL_MS)]);
-        try {
-          await emailSender.sendPasswordResetCode({ to: email, code, expiresMinutes: 5 });
-        } catch (err) {
-          console.warn("password reset email not delivered:", err instanceof Error ? err.message : err);
+            [user.id, hash, new Date(Date.now() + CODE_TTL_MS)]);
+          delivery = { userId: user.id, code, hash };
         }
+      }
+      await client.query('COMMIT');
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
+    if (delivery) {
+      try {
+        await emailSender.sendPasswordResetCode({ to: email, code: delivery.code, expiresMinutes: 5 });
+      } catch (err) {
+        // A failed send must not leave an undelivered code valid or block a retry.
+        // The hash condition protects any newer request from being deleted.
+        await pool.query('DELETE FROM password_resets WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL', [delivery.userId, delivery.hash]);
+        console.warn('Password reset email delivery failed', { status: err instanceof EmailDeliveryError ? err.status : undefined });
       }
     } else {
       // Blunt the timing difference between known and unknown addresses.
@@ -241,7 +269,14 @@ authRouter.post("/verify-reset-code", limiter, async (req, res, next) => {
     if (!EMAIL_RE.test(email) || !/^\d{6}$/.test(code)) {
       throw new HttpError(400, "Invalid or expired code", "Enter the 6-digit code sent to the email.");
     }
-    const { ok } = await validateResetCode(email, code);
+    const client = await pool.connect();
+    let ok = false;
+    try {
+      await client.query('BEGIN');
+      ({ ok } = await validateResetCode(client, email, code));
+      await client.query('COMMIT'); // Persist failed-guess counters too.
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
     if (!ok) throw new HttpError(400, "Invalid or expired code", "The code is invalid or has expired. Request a new one.");
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -257,16 +292,21 @@ authRouter.post("/reset-password", limiter, async (req, res, next) => {
         typeof password !== "string" || password.length < 12 || password.length > 128) {
       throw new HttpError(400, "Invalid request", "Enter the 6-digit code and a password of 12 to 128 characters.");
     }
-    const { ok, userId } = await validateResetCode(email, code);
-    if (!ok || !userId) throw new HttpError(400, "Invalid or expired code", "The code is invalid or has expired. Request a new one.");
+    // Derive the password before acquiring locks; revalidate the code after hashing.
     const hash = await hashPassword(password);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      const { ok, userId } = await validateResetCode(client, email, code);
+      if (!ok || !userId) {
+        await client.query('COMMIT'); // Do not roll back failed-guess counters.
+        return next(new HttpError(400, 'Invalid or expired code', 'The code is invalid or has expired. Request a new one.'));
+      }
       // Consumes the code atomically; a concurrent reset finds it already spent.
       const { rows: consumed } = await client.query(
-        "UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL RETURNING user_id",
-        [userId]);
+        `UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND code_hash = $2
+         AND used_at IS NULL AND expires_at > clock_timestamp() AND attempts < $3 RETURNING user_id`,
+        [userId, resetCodeHash(userId, code), MAX_CODE_ATTEMPTS]);
       if (!consumed[0]) throw new HttpError(400, "Invalid or expired code", "The code is invalid or has expired. Request a new one.");
       // Row lock keeps the per-day cap atomic across concurrent resets.
       const { rows: [account] } = await client.query<{ resets: number; next_at: Date | null }>(

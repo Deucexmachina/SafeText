@@ -102,18 +102,38 @@ after changing these settings. Empty keys do not enable a demo verdict.
 ### Password-reset email
 
 "Forgot password?" sends a 6-digit code to the account's email address.
-Configure delivery in `server/.env`:
+For Render Free, configure **Brevo's HTTPS API**, not SMTP: Render blocks outbound
+ports 25, 465, and 587. Adding Gmail SMTP credentials cannot fix that restriction.
+[Render restrictions](https://render.com/docs/free).
 
-- `SMTP_URL` — full SMTP DSN including credentials, e.g.
-  `smtps://you%40gmail.com:app-password@smtp.gmail.com`. Gmail requires an
-  [app password](https://support.google.com/accounts/answer/185833), not your
-  account password. Any SMTP provider works (Brevo, SendGrid SMTP, etc.).
-- `EMAIL_FROM` — sender identity, default `SafeText <no-reply@safetext.local>`.
-- `EMAIL_DEV_LOG=1` — development-only fallback that prints the reset email to
-  the server console instead of sending it. Never enable in production.
+- `BREVO_API_KEY` — a Brevo **API key**, not an SMTP key or Gmail password.
+- `EMAIL_FROM` — the sender verified in Brevo, such as
+  `SafeText <your-verified-address@gmail.com>`. Replace the example with an
+  address you control and have verified. The `.local` default cannot send mail.
+- `SMTP_URL` — optional on hosts where SMTP is available. HTTPS takes precedence
+  when `BREVO_API_KEY` is set. SMTP connections have bounded timeouts.
+- `EMAIL_DEV_LOG=1` — optional local-only console/outbox delivery. Ignored in
+  production, even if accidentally set. Never enable it on Render.
 
-Without `SMTP_URL` or `EMAIL_DEV_LOG`, requests still get the same generic
-response but no email is delivered — configure one before demoing.
+Verify your sender in Brevo and complete any required transactional-account
+activation. A Gmail sender may show authentication warnings; use an authenticated
+domain for better deliverability when one becomes available. The existing
+`onrender.com` address is the website origin, not an email domain you control.
+[Brevo sender setup](https://help.brevo.com/hc/en-us/articles/208836149-Create-a-new-sender-From-name-and-From-email).
+
+See [Render password reset setup](docs/DEPLOYMENT.md#configure-password-reset-email)
+for step-by-step instructions. Enter production secrets in Render Environment;
+local development reads `server/.env`. No Neon environment changes are needed.
+
+Missing delivery configuration returns the same clear 503 response for every
+email address. Configured requests return a generic response whether or not an
+enabled account exists. Provider acceptance does not guarantee inbox delivery;
+check Brevo transactional logs for bounces, suppression, and account restrictions.
+Provider submission has a 10-second timeout and is not automatically retried.
+Failed submissions invalidate only that request's code and log no credentials,
+recipient, or code. Successful resets revoke all sessions. Codes are hashed,
+expire after five minutes, allow eight failed guesses, and are single-use;
+concurrent requests serialize code replacement, validation, and consumption.
 
 Keys are read server-side only and are never sent to the frontend. A missing
 key makes only that provider fail with a clear error: scans still complete
@@ -179,8 +199,8 @@ Browser writes must match `APP_ORIGIN` (default `http://localhost:5173`). Use th
 URL locally. Vite stays on port 5173 so it cannot silently change origins.
 For deployment, use HTTPS, set `NODE_ENV=production` to enable Secure cookies,
 set `APP_ORIGIN` to the public origin, and serve the frontend and `/api` from that
-same origin. Email verification, password resets, and multi-factor authentication
-are not implemented.
+same origin. Password resets require email delivery configuration above.
+Email verification and multi-factor authentication are not implemented.
 
 ## Roles and administrator setup
 
@@ -235,7 +255,7 @@ This is a targeted code review and regression suite, not a penetration-test cert
   checks and 8 MB upload limits remain in place. Unknown request/worker errors
   do not log raw message bodies, provider response bodies or connection secrets.
 - Account disabling does not recall requests already sent to providers. No
-  email verification, password recovery, MFA, admin reauthentication, or encrypted
+  email verification, MFA, admin reauthentication, or encrypted
   application storage has been added.
   Use a strong unique admin password; configure backups/storage encryption and
   operational monitoring before exposing the app publicly. Audit dependencies

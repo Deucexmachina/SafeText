@@ -4,9 +4,10 @@ import type { EmailSender } from "./EmailSender.js";
 // the caller logs a warning; responses still stay generic to avoid leaking
 // which addresses are registered.
 export class DisabledEmailSender implements EmailSender {
+  readonly configured = false;
   async sendPasswordResetCode(): Promise<never> {
     throw new Error(
-      "Email delivery is not configured. Set SMTP_URL, or EMAIL_DEV_LOG=1 for local development.",
+      "Email delivery is not configured. Set BREVO_API_KEY and EMAIL_FROM for Render, or configure SMTP elsewhere.",
     );
   }
 }

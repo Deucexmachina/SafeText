@@ -28,7 +28,8 @@ try {
     windowsHide: true, stdio: ['ignore', 'inherit', 'inherit'],
     env: { ...process.env, DATABASE_URL: url.href, PORT: String(port),
       NODE_ENV: 'production', APP_ORIGIN: 'https://safetext.example', SERVE_WEB: 'true',
-      KIMI_API_KEY: '', LLM_WHISPERER_API_KEY: '', GOOGLE_SAFE_BROWSING_API_KEY: '' },
+      KIMI_API_KEY: '', LLM_WHISPERER_API_KEY: '', GOOGLE_SAFE_BROWSING_API_KEY: '',
+      BREVO_API_KEY: '', SMTP_URL: '', EMAIL_DEV_LOG: '' },
   });
   exited = once(child, 'exit');
   const base = `http://127.0.0.1:${port}`;
@@ -42,7 +43,7 @@ try {
     await delay(200);
   }
   assert(ready, 'Production server must become ready.');
-  for (const path of ['/', '/history', '/scan/example']) {
+  for (const path of ['/', '/history', '/scan/example', '/forgot-password']) {
     const response = await fetch(`${base}${path}`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /text\/html/);
@@ -66,6 +67,10 @@ try {
   const crossSite = await fetch(`${base}/api/v1/auth/login`, { method: 'POST',
     headers: { Origin: 'https://untrusted.example', 'Content-Type': 'application/json' }, body: '{}' });
   assert.equal(crossSite.status, 403);
+  const resetUnavailable = await fetch(`${base}/api/v1/auth/forgot-password`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'smoke@example.com' }) });
+  assert.equal(resetUnavailable.status, 503);
+  assert.match(resetUnavailable.headers.get('content-type'), /application\/problem\+json/);
   console.log('Production website, SPA routes, assets, API authentication and origin checks passed.');
 } finally {
   if (child && child.exitCode === null) { child.kill(); await exited; }

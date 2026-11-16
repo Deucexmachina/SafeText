@@ -43,3 +43,7 @@ services:
         value: kimi-k3
       - key: GOOGLE_SAFE_BROWSING_API_KEY
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
