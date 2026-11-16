@@ -102,6 +102,30 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
       assert.match(await csv.text(), /force_logout/);
       assert.equal((await call('/admin/audit', 'GET', undefined, reCookie)).status, 401);
     });
+    await t.test('admin overview reports aggregate stats and provider health without message content', async () => {
+      await pool.query(
+        `INSERT INTO scans(id, user_id, input_type, input_text, state, analysis, threat_intel, incomplete)
+         VALUES('ovw1', $1, 'text', 'secret message body', 'PARTIAL', '{"verdict":"MALICIOUS"}'::jsonb,
+                '{"urls":[{"url":"https://gcash-verify.top/x","threat":"SOCIAL_ENGINEERING"}]}'::jsonb,
+                '["analysis"]'::jsonb)`, [regular.id]);
+      const res = await call('/admin/overview', 'GET', undefined, operator.cookie);
+      assert.equal(res.status, 200);
+      const ov = await res.json() as {
+        totalUsers: number; scansToday: number;
+        verdictsToday: { safe: number; suspicious: number; malicious: number; inconclusive: number };
+        topFlaggedDomains: { domain: string; hits: number }[];
+        health: { failedToday: number; providers: { id: string; mode: string; failuresToday: number }[] };
+      };
+      assert.equal(ov.totalUsers, 2);
+      assert(ov.scansToday >= 1);
+      assert.equal(ov.verdictsToday.malicious, 1);
+      assert(ov.topFlaggedDomains.some(d => d.domain === 'gcash-verify.top' && d.hits === 1));
+      assert(ov.health.failedToday >= 1);
+      assert.equal(ov.health.providers.find(p => p.id === 'kimi')!.failuresToday, 1);
+      assert(ov.health.providers.every(p => p.mode === 'live' || p.mode === 'stub'));
+      // Only aggregate numbers: no message text, extraction, or scan ids leak.
+      assert.doesNotMatch(JSON.stringify(ov), /secret message body|private SMS|ovw1|extracted/i);
+    });
     await t.test('API sends security headers and rejects oversized JSON without details', async () => {
       const health = await call('/health');
       assert.equal(health.headers.get('x-content-type-options'), 'nosniff');

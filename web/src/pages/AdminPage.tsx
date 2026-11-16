@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { downloadAuditCsv, forceLogoutUser, listAudit, listUsers, setUserDisabled, type AdminUser, type AuditEntry, type UserFilter } from '../api';
+import { downloadAuditCsv, forceLogoutUser, getAdminOverview, listAudit, listUsers, setUserDisabled, type AdminOverview, type AdminUser, type AuditEntry, type UserFilter } from '../api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
 const PAGE = 20;
@@ -18,7 +18,10 @@ function fmt(date: string | null) {
 }
 
 export function AdminPage() {
-  const [view, setView] = useState<'accounts' | 'audit'>('accounts');
+  const [view, setView] = useState<'overview' | 'accounts' | 'audit'>('overview');
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [overviewError, setOverviewError] = useState('');
+  const [overviewLoading, setOverviewLoading] = useState(true);
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [offset, setOffset] = useState(0);
@@ -35,6 +38,15 @@ export function AdminPage() {
   const [auditOffset, setAuditOffset] = useState(0);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditError, setAuditError] = useState('');
+
+  useEffect(() => {
+    if (view !== 'overview') return;
+    let cancelled = false; setOverviewLoading(true); setOverviewError('');
+    getAdminOverview().then(result => { if (!cancelled) setOverview(result); })
+      .catch(err => { if (!cancelled) setOverviewError(err instanceof Error ? err.message : 'Could not load the dashboard.'); })
+      .finally(() => { if (!cancelled) setOverviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [view]);
 
   useEffect(() => {
     if (view !== 'accounts') return;
@@ -88,11 +100,50 @@ export function AdminPage() {
     <h1>Account management</h1>
     <p className="muted">Manage account access. Each person's messages and scan history remain private.</p>
     <div className="admin-tabs" role="tablist">
+      <button role="tab" aria-selected={view === 'overview'} className={view === 'overview' ? 'admin-tab active' : 'admin-tab'}
+        onClick={() => setView('overview')}>Overview</button>
       <button role="tab" aria-selected={view === 'accounts'} className={view === 'accounts' ? 'admin-tab active' : 'admin-tab'}
         onClick={() => setView('accounts')}>Accounts</button>
       <button role="tab" aria-selected={view === 'audit'} className={view === 'audit' ? 'admin-tab active' : 'admin-tab'}
         onClick={() => setView('audit')}>Audit log</button>
     </div>
+
+    {view === 'overview' && <>
+      {overviewError && <p role="alert" className="error-box">{overviewError}</p>}
+      {overviewLoading || !overview ? <p role="status">Loading dashboard...</p> : <>
+        <div className="stat-grid">
+          <div className="stat-box"><div className="stat-num">{overview.totalUsers}</div><div className="stat-label">Total users</div></div>
+          <div className="stat-box"><div className="stat-num">{overview.scansToday}</div><div className="stat-label">Scans today</div></div>
+          <div className="stat-box"><div className="stat-num stat-safe">{overview.verdictsToday.safe}</div><div className="stat-label">Safe</div></div>
+          <div className="stat-box"><div className="stat-num stat-suspicious">{overview.verdictsToday.suspicious}</div><div className="stat-label">Suspicious</div></div>
+          <div className="stat-box"><div className="stat-num stat-malicious">{overview.verdictsToday.malicious}</div><div className="stat-label">Malicious</div></div>
+          <div className="stat-box"><div className="stat-num stat-inconclusive">{overview.verdictsToday.inconclusive}</div><div className="stat-label">Inconclusive</div></div>
+          <div className="stat-box"><div className={`stat-num${overview.health.failedToday > 0 ? ' stat-malicious' : ''}`}>{overview.health.failedToday}</div><div className="stat-label">Scans failed today</div></div>
+        </div>
+
+        <h2 className="admin-section-title">Provider health</h2>
+        <div className="admin-table-wrap"><table className="history-table">
+          <thead><tr><th>Provider</th><th>Status</th><th>Failures today</th></tr></thead>
+          <tbody>{overview.health.providers.map(provider => <tr key={provider.id}>
+            <td>{provider.label}</td>
+            <td><span className={`badge ${provider.mode === 'live' ? 'badge-safe' : 'badge-neutral'}`}>{provider.mode}</span></td>
+            <td>{provider.failuresToday > 0 ? <span className="signal-warn">{provider.failuresToday}</span> : 0}</td>
+          </tr>)}</tbody>
+        </table></div>
+        <p className="hint">"Stub" means no API key is configured — the provider returns canned data and stages may fail in real runs.</p>
+
+        <h2 className="admin-section-title">Top flagged link domains</h2>
+        {overview.topFlaggedDomains.length === 0
+          ? <p className="muted">No flagged links yet.</p>
+          : <div className="admin-table-wrap"><table className="history-table">
+            <thead><tr><th>Domain</th><th>Times flagged</th></tr></thead>
+            <tbody>{overview.topFlaggedDomains.map(row => <tr key={row.domain}>
+              <td><span className="url">{row.domain}</span></td>
+              <td>{row.hits}</td>
+            </tr>)}</tbody>
+          </table></div>}
+      </>}
+    </>}
 
     {view === 'accounts' && <>
       {pendingUser && <ConfirmDialog

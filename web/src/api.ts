@@ -135,6 +135,17 @@ export function forceLogoutUser(id: string) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: "{}",
   });
 }
+export interface AdminOverview {
+  totalUsers: number;
+  scansToday: number;
+  verdictsToday: { safe: number; suspicious: number; malicious: number; inconclusive: number };
+  topFlaggedDomains: { domain: string; hits: number }[];
+  health: {
+    failedToday: number;
+    providers: { id: string; label: string; mode: string; failuresToday: number }[];
+  };
+}
+export function getAdminOverview() { return request<AdminOverview>('/api/v1/admin/overview'); }
 export interface AuditEntry { id: number; actorEmail: string; targetEmail: string; action: string; reason: string | null; createdAt: string }
 export function listAudit(offset = 0) {
   return request<{ audit: AuditEntry[] }>(`/api/v1/admin/audit?limit=20&offset=${offset}`);

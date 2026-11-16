@@ -930,6 +930,49 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 14px 0 20px;
+}
+
+.stat-box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--card);
+}
+
+.stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-num.stat-safe { color: var(--safe); }
+.stat-num.stat-suspicious { color: var(--warn); }
+.stat-num.stat-malicious { color: var(--bad); }
+.stat-num.stat-inconclusive { color: var(--unknown); }
+
+.stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-top: 2px;
+}
+
+.admin-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin: 20px 0 6px;
+}
+
 .pagination {
   display: flex;
   align-items: center;

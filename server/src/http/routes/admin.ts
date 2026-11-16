@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../../db/pool.js';
+import { config } from '../../config.js';
 import { requireAdmin, verifyPassword } from '../auth.js';
 import { HttpError } from '../problem.js';
 
@@ -131,6 +132,51 @@ async function auditRows(limit: number, offset: number): Promise<AuditRow[]> {
      ORDER BY aa.created_at DESC, aa.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
   return rows;
 }
+
+// Aggregate dashboard numbers only — no message content ever leaves the API.
+adminRouter.get('/overview', async (_req, res, next) => {
+  try {
+    const { rows: [totals] } = await pool.query<{ totalUsers: number; scansToday: number; failedToday: number }>(
+      `SELECT (SELECT count(*)::int FROM users) AS "totalUsers",
+              (SELECT count(*)::int FROM scans WHERE created_at >= date_trunc('day', now())) AS "scansToday",
+              (SELECT count(*)::int FROM scans WHERE created_at >= date_trunc('day', now())
+                AND state IN ('PARTIAL','INCONCLUSIVE')) AS "failedToday"`);
+    const { rows: verdictRows } = await pool.query<{ verdict: string; count: number }>(
+      `SELECT analysis->>'verdict' AS verdict, count(*)::int AS count FROM scans
+       WHERE created_at >= date_trunc('day', now()) AND analysis IS NOT NULL GROUP BY 1`);
+    const { rows: domains } = await pool.query<{ domain: string; hits: number }>(
+      `SELECT lower(split_part(regexp_replace(u->>'url', '^[a-z][a-z0-9+.-]*://', '', 'i'), '/', 1)) AS domain,
+              count(*)::int AS hits
+       FROM scans s, jsonb_array_elements(s.threat_intel->'urls') u
+       WHERE jsonb_typeof(s.threat_intel->'urls') = 'array' AND u->>'threat' IS NOT NULL
+       GROUP BY 1 ORDER BY hits DESC, domain LIMIT 10`);
+    const { rows: stageRows } = await pool.query<{ stage: string; failures: number }>(
+      `SELECT st.value AS stage, count(*)::int AS failures
+       FROM scans s, jsonb_array_elements_text(s.incomplete) st(value)
+       WHERE s.created_at >= date_trunc('day', now()) GROUP BY st.value`);
+
+    const verdictsToday = { safe: 0, suspicious: 0, malicious: 0, inconclusive: 0 };
+    for (const row of verdictRows) {
+      const key = row.verdict?.toLowerCase() as keyof typeof verdictsToday;
+      if (key in verdictsToday) verdictsToday[key] = row.count;
+    }
+    const stageFailures = Object.fromEntries(stageRows.map(r => [r.stage, r.failures]));
+    res.json({
+      totalUsers: totals.totalUsers,
+      scansToday: totals.scansToday,
+      verdictsToday,
+      topFlaggedDomains: domains,
+      health: {
+        failedToday: totals.failedToday,
+        providers: [
+          { id: 'llm_whisperer', label: 'LLM Whisperer (OCR)', mode: config.llmWhispererApiKey ? 'live' : 'stub', failuresToday: stageFailures['extraction'] ?? 0 },
+          { id: 'kimi', label: 'Kimi (analysis)', mode: config.kimiApiKey ? 'live' : 'stub', failuresToday: stageFailures['analysis'] ?? 0 },
+          { id: 'safe_browsing', label: 'Google Safe Browsing (links)', mode: config.safeBrowsingApiKey ? 'live' : 'stub', failuresToday: stageFailures['threat_intel'] ?? 0 },
+        ],
+      },
+    });
+  } catch (err) { next(err); }
+});
 
 adminRouter.get('/audit', async (req, res, next) => {
   try {
