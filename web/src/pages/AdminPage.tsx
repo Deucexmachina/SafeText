@@ -4,6 +4,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 
 const PAGE = 20;
 const EMPTY_FILTER: UserFilter = { search: '', status: '', from: '', to: '' };
+// en-CA renders YYYY-MM-DD in local time, which is what input[type=date] expects.
+const today = new Date().toLocaleDateString('en-CA');
 
 const ACTION_LABELS: Record<string, string> = {
   disable_user: 'Disabled account',
@@ -125,10 +127,10 @@ export function AdminPage() {
           <option value="disabled">Disabled</option>
         </select>
         <label className="filter-date">Joined from
-          <input type="date" value={draft.from} onChange={e => setDraft({ ...draft, from: e.target.value })} />
+          <input type="date" min={today} value={draft.from} onChange={e => setDraft({ ...draft, from: e.target.value })} />
         </label>
         <label className="filter-date">to
-          <input type="date" value={draft.to} onChange={e => setDraft({ ...draft, to: e.target.value })} />
+          <input type="date" min={draft.from || today} value={draft.to} onChange={e => setDraft({ ...draft, to: e.target.value })} />
         </label>
         <button className="page-btn" type="submit" disabled={loading}>Apply</button>
         <button className="page-btn" type="button" disabled={loading}
