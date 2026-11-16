@@ -1,4 +1,4 @@
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { ScanPage } from "./pages/ScanPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ScanDetailPage } from "./pages/ScanDetailPage";
@@ -8,7 +8,10 @@ import { AuthPage } from "./pages/AuthPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { AdminPage } from "./pages/AdminPage";
 import { LandingPage } from "./pages/LandingPage";
-import { NavigationMenu } from "./components/NavigationMenu";
+import { AppNav } from "./components/AppNav";
+import { useSiteTheme } from "./components/SiteNav";
+import "./landing.css";
+import "./app.css";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -28,9 +31,9 @@ export default function App() {
     window.addEventListener("safetext:session-expired", expired);
     return () => window.removeEventListener("safetext:session-expired", expired);
   }, []);
-  async function signOut() {
-    try { await logout(); setUser(null); setError(""); }
-    catch { setError("Couldn't log out. Please try again."); }
+  async function signOut(): Promise<boolean> {
+    try { await logout(); setUser(null); setError(""); return true; }
+    catch { setError("Couldn't log out. Please try again."); return false; }
   }
   return (
     <BrowserRouter>
@@ -46,9 +49,11 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
   status: AppStatus | null;
   onLogin: (user: User) => void;
   onRetry: () => void;
-  onSignOut: () => void;
+  onSignOut: () => Promise<boolean>;
 }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [theme, toggleTheme] = useSiteTheme();
   const notices = <>
     {status?.maintenance && <p className="notice banner" role="status">SafeText is under maintenance — new scans are paused. Please check back soon.</p>}
     {status?.announcement && <p className="notice banner" role="status">{status.announcement}</p>}
@@ -66,6 +71,37 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
       : <ForgotPasswordPage notices={pageNotices} />;
   }
 
+  // Initial session check: a calm branded loading screen instead of bare text.
+  if (loading) {
+    return <div className="lp ap ap-loading" data-theme={theme} role="status">
+      <span className="lp-logo-tile ap-loading-logo"><img src="/icon.png" alt="" /></span>
+      <span className="lp-spinner" aria-hidden="true" />
+      <span>Loading your account…</span>
+    </div>;
+  }
+
+  if (user) {
+    // Logging out always returns to the landing page, from any screen.
+    const signOutToLanding = async () => { if (await onSignOut()) navigate("/", { replace: true }); };
+    // The admin console keeps its existing light styling.
+    const adminRoute = pathname.startsWith("/admin");
+    return <div className="lp ap" data-theme={adminRoute ? "light" : theme}>
+      <a className="lp-skip" href="#main-content">Skip to content</a>
+      <AppNav key={user.id} email={user.email} isAdmin={user.role === "admin"} theme={theme} onToggleTheme={toggleTheme}
+        showThemeToggle={!adminRoute} onSignOut={signOutToLanding} />
+      <main id="main-content" tabIndex={-1} className={adminRoute ? "ap-main ap-main-admin" : "ap-main"}>
+        {(status?.maintenance || status?.announcement || error) && <div className="ap-notices">{notices}</div>}
+        <Routes key={user.id}>
+          <Route path="/" element={<ScanPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/scan/:id" element={<ScanDetailPage />} />
+          <Route path="/forgot-password" element={<Navigate to="/" replace />} />
+          <Route path="/admin" element={user.role === 'admin' ? <AdminPage /> : <Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </div>;
+  }
+
   return <>
     <header className="topbar">
       <div className="topbar-inner">
@@ -73,21 +109,13 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
           <img src="/icon.png" alt="" className="wordmark-icon" />
           SafeText
         </Link>
-        {user && <NavigationMenu key={user.id} isAdmin={user.role === "admin"} />}
-        {user && <div className="account"><span>{user.email}</span><button className="link-btn" onClick={onSignOut}>Log out</button></div>}
       </div>
     </header>
     <main>
       {notices}
-      {loading ? <p>Loading your account...</p> : !user ? (!error && <Routes>
+      {!error && <Routes>
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="*" element={<AuthPage onLogin={onLogin} />} />
-      </Routes>) : <Routes key={user.id}>
-        <Route path="/" element={<ScanPage />} />
-        <Route path="/history" element={<HistoryPage />} />
-        <Route path="/scan/:id" element={<ScanDetailPage />} />
-        <Route path="/forgot-password" element={<Navigate to="/" replace />} />
-        <Route path="/admin" element={user.role === 'admin' ? <AdminPage /> : <Navigate to="/" replace />} />
       </Routes>}
     </main>
   </>;
