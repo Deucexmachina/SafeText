@@ -123,3 +123,18 @@ export function logout() {
     method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
   });
 }
+export function forgotPassword(email: string) {
+  return request<{ ok: boolean }>("/api/v1/auth/forgot-password", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
+  });
+}
+export function verifyResetCode(email: string, code: string) {
+  return request<{ ok: boolean }>("/api/v1/auth/verify-reset-code", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, code }),
+  });
+}
+export function resetPassword(email: string, code: string, password: string) {
+  return request<{ ok: boolean }>("/api/v1/auth/reset-password", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, code, password }),
+  });
+}

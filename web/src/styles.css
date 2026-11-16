@@ -22,6 +22,10 @@
 .password-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 .password-toggle:disabled { opacity: 0.5; cursor: default; }
 .auth-toggle { margin-top: 20px; }
+.forgot-row { margin: -8px 0 10px; text-align: right; }
+.forgot-row a { color: var(--accent); font-size: 13px; text-decoration: none; }
+.forgot-row a:hover { text-decoration: underline; }
+.code-input { letter-spacing: 0.45em; font-size: 20px; text-align: center; font-variant-numeric: tabular-nums; }
 .account { margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; overflow-wrap: anywhere; }
 .topbar-inner { flex-wrap: wrap; }
 

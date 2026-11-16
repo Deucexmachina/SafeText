@@ -99,6 +99,22 @@ after changing these settings. Empty keys do not enable a demo verdict.
   Browsing Lookup API v4 (`threatMatches:find`). Create a key in Google
   Cloud Console with the Safe Browsing API enabled.
 
+### Password-reset email
+
+"Forgot password?" sends a 6-digit code to the account's email address.
+Configure delivery in `server/.env`:
+
+- `SMTP_URL` — full SMTP DSN including credentials, e.g.
+  `smtps://you%40gmail.com:app-password@smtp.gmail.com`. Gmail requires an
+  [app password](https://support.google.com/accounts/answer/185833), not your
+  account password. Any SMTP provider works (Brevo, SendGrid SMTP, etc.).
+- `EMAIL_FROM` — sender identity, default `SafeText <no-reply@safetext.local>`.
+- `EMAIL_DEV_LOG=1` — development-only fallback that prints the reset email to
+  the server console instead of sending it. Never enable in production.
+
+Without `SMTP_URL` or `EMAIL_DEV_LOG`, requests still get the same generic
+response but no email is delivered — configure one before demoing.
+
 Keys are read server-side only and are never sent to the frontend. A missing
 key makes only that provider fail with a clear error: scans still complete
 as `PARTIAL` or `INCONCLUSIVE` rather than crashing.
@@ -273,6 +289,9 @@ Base path: `/api/v1`. Vite proxies `/api` to the backend on port 3001.
 | POST | `/auth/login` | JSON email/password; creates session |
 | GET | `/auth/me` | Current account; 401 when logged out or expired |
 | POST | `/auth/logout` | JSON `{}`; revokes session and clears cookie |
+| POST | `/auth/forgot-password` | JSON `{ email }`; emails a 6-digit code (5 min, single use); always generic response |
+| POST | `/auth/verify-reset-code` | JSON `{ email, code }`; checks the code without consuming it |
+| POST | `/auth/reset-password` | JSON `{ email, code, password }`; consumes the code, sets the new password, revokes sessions |
 | POST | `/scan` | Authenticated; JSON text or multipart image field `file`; returns 202 and scanId |
 | GET | `/scan/:id` | Authenticated; owner's scan; 404 for another account's scan |
 | DELETE | `/scan/:id` | Authenticated; permanently deletes only the owner's scan; 404 for another account's scan |

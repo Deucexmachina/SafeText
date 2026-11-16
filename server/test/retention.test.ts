@@ -22,7 +22,7 @@ test('storage retention and capacity boundaries against PostgreSQL', async t => 
   const { createApp } = await import('../src/app.js');
   const users = [randomUUID(), randomUUID(), randomUUID()];
   async function reset() {
-    await pool.query('TRUNCATE sessions, admin_audit, scans, users, auth_attempts');
+    await pool.query('TRUNCATE sessions, admin_audit, scans, users, auth_attempts, password_resets');
     for (let i = 0; i < users.length; i++) await pool.query(
       'INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)', [users[i], `fixture${i}@example.com`, 'unused']);
   }

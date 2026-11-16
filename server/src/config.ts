@@ -42,4 +42,10 @@ export const config = {
   kimiApiKey: process.env.KIMI_API_KEY ?? "",
   kimiModel: process.env.KIMI_MODEL ?? "kimi-k3",
   safeBrowsingApiKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY ?? "",
+  // Password-reset email delivery. SMTP_URL is a full DSN, e.g.
+  // smtps://user%40gmail.com:app-password@smtp.gmail.com — without it,
+  // EMAIL_DEV_LOG=1 prints reset emails to the server console (dev only).
+  smtpUrl: process.env.SMTP_URL ?? "",
+  emailFrom: process.env.EMAIL_FROM ?? "SafeText <no-reply@safetext.local>",
+  emailDevLog: process.env.EMAIL_DEV_LOG === "1" || process.env.EMAIL_DEV_LOG === "true",
 };
