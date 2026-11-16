@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin'));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT false;
+-- Successful password resets are capped per rolling day.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_window TIMESTAMPTZ;
 -- The product has one administrator; concurrent promotions cannot create two.
 CREATE UNIQUE INDEX IF NOT EXISTS users_single_admin ON users(role) WHERE role = 'admin';
 

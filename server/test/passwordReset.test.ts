@@ -82,6 +82,32 @@ test("password reset: emailed code, verify, single-use reset, session revocation
     const { rows: [user] } = await pool.query<{ password_hash: string }>("SELECT password_hash FROM users WHERE email = $1", [email]);
     assert.notEqual(user.password_hash, newPassword);
 
+    // The same account can reset at most 3 times per rolling day. This user
+    // already spent one reset above; two more succeed, the fourth is refused.
+    await pool.query("DELETE FROM auth_attempts");
+    for (const cycle of [2, 3, 4]) {
+      await pool.query("UPDATE password_resets SET created_at = now() - interval '2 minutes'");
+      assert.equal((await call("/auth/forgot-password", "POST", { email })).status, 200);
+      const cycleCode = codeOf(outbox.sent.at(-1)!);
+      const attempt = await call("/auth/reset-password", "POST",
+        { email, code: cycleCode, password: `replacement password ${cycle}` });
+      if (cycle <= 3) assert.equal(attempt.status, 200);
+      else {
+        assert.equal(attempt.status, 429);
+        assert(Number(attempt.headers.get("retry-after")) > 0);
+      }
+    }
+    assert.equal((await call("/auth/login", "POST", { email, password: "replacement password 3" })).status, 200);
+    assert.equal((await call("/auth/login", "POST", { email, password: "replacement password 4" })).status, 401);
+
+    // Once the rolling day passes, resets are allowed again.
+    await pool.query("UPDATE users SET password_reset_window = now() - interval '2 days' WHERE email = $1", [email]);
+    await pool.query("UPDATE password_resets SET created_at = now() - interval '2 minutes'");
+    assert.equal((await call("/auth/forgot-password", "POST", { email })).status, 200);
+    const rolledCode = codeOf(outbox.sent.at(-1)!);
+    assert.equal((await call("/auth/reset-password", "POST",
+      { email, code: rolledCode, password: "replacement password 5" })).status, 200);
+
     // Expired codes are rejected.
     await call("/auth/register", "POST", { email: "second@example.com", password });
     await call("/auth/forgot-password", "POST", { email: "second@example.com" });

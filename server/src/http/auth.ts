@@ -142,6 +142,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE_TTL_MS = 5 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
 const MAX_CODE_ATTEMPTS = 8;
+const MAX_RESETS_PER_DAY = 3;
 
 function resetCodeHash(userId: string, code: string): string {
   return createHash("sha256").update(`${userId}:${code}`).digest("hex");
@@ -254,7 +255,23 @@ authRouter.post("/reset-password", limiter, async (req, res, next) => {
         "UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL RETURNING user_id",
         [userId]);
       if (!consumed[0]) throw new HttpError(400, "Invalid or expired code", "The code is invalid or has expired. Request a new one.");
-      await client.query("UPDATE users SET password_hash = $2 WHERE id = $1", [userId, hash]);
+      // Row lock keeps the per-day cap atomic across concurrent resets.
+      const { rows: [account] } = await client.query<{ resets: number; next_at: Date | null }>(
+        `SELECT password_reset_count AS resets,
+                CASE WHEN password_reset_window > now() - interval '1 day'
+                     THEN password_reset_window + interval '1 day' END AS next_at
+           FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+      if (account && account.resets >= MAX_RESETS_PER_DAY && account.next_at) {
+        res.setHeader('Retry-After', String(Math.max(1, Math.ceil((account.next_at.getTime() - Date.now()) / 1000))));
+        throw new HttpError(429, 'Too many resets', 'Passwords can be reset at most 3 times per day. Try again later.');
+      }
+      await client.query(
+        `UPDATE users SET password_hash = $2,
+           password_reset_count = CASE WHEN password_reset_window IS NULL OR password_reset_window < now() - interval '1 day'
+                THEN 1 ELSE password_reset_count + 1 END,
+           password_reset_window = CASE WHEN password_reset_window IS NULL OR password_reset_window < now() - interval '1 day'
+                THEN now() ELSE password_reset_window END
+         WHERE id = $1`, [userId, hash]);
       // Sessions minted under the old password are all ended.
       await client.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
       await client.query('COMMIT');
