@@ -3,8 +3,12 @@ import { Link } from "react-router-dom";
 import { authenticate, type User } from "../api";
 import { PasswordInput } from "../components/PasswordInput";
 
-export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
-  const [action, setAction] = useState<"login" | "register">("login");
+export function AuthPage({ onLogin, initialAction = "login", note }: {
+  onLogin: (user: User) => void;
+  initialAction?: "login" | "register";
+  note?: string;
+}) {
+  const [action, setAction] = useState<"login" | "register">(initialAction);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -22,8 +26,9 @@ export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   }
   return <section className="card auth-card">
     <img src="/icon.png" alt="SafeText" className="auth-logo" />
-    <h1>{action === "login" ? "Welcome to SafeText" : "Create your account"}</h1>
+    <h1 id="auth-title">{action === "login" ? "Welcome to SafeText" : "Create your account"}</h1>
     <p className="muted">Check messages and keep your scan history private.</p>
+    {note && <p className="auth-note">{note}</p>}
     <form onSubmit={submit} noValidate>
       <label className="field-label" htmlFor="email">Email</label>
       <input id="email" type="email" autoComplete="email" maxLength={254} required value={email} onChange={e => setEmail(e.target.value)} disabled={busy} />
