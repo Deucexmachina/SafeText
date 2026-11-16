@@ -122,7 +122,6 @@ export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => voi
         <section className="lp-hero" aria-labelledby="hero-title">
           <div className="lp-wrap lp-hero-grid">
             <div className="lp-hero-copy">
-              <p className="lp-eyebrow"><IconSafe size={16} />A campus scam-awareness project</p>
               <h1 id="hero-title">Got a strange text? Check it before you tap.</h1>
               <p className="lp-lead">Paste a suspicious text or screenshot and see if it looks like a scam, and why.</p>
               <div className="lp-cta-row">
@@ -277,7 +276,7 @@ export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => voi
         <div className="lp-wrap lp-footer-inner">
           <div>
             <Logo href="#top" />
-            <p>Developed by Group Nano</p>
+            <p>Developed by Nano</p>
           </div>
           <p className="lp-footer-note">An awareness aid, not a guarantee. When in doubt, don't click.</p>
         </div>

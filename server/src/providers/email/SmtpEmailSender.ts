@@ -28,6 +28,7 @@ export class SmtpEmailSender implements EmailSender {
       to: input.to,
       subject: mail.subject,
       text: mail.text,
+      html: mail.html,
     });
   }
 }

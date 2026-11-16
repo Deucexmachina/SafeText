@@ -29,6 +29,7 @@ test('Brevo contract sends a code over HTTPS with bounded timeout and validates 
     assert.deepEqual(body.sender, { name: 'SafeText', email: 'sender@example.com' });
     assert.deepEqual(body.to, [{ email: 'recipient@example.com' }]);
     assert.match(body.textContent, /012345/); assert.match(body.textContent, /5 minutes/);
+    assert.match(body.htmlContent, /012345/); assert.match(body.htmlContent, /5 minutes/);
     assert.equal(body.subject, 'Your SafeText password reset code');
     return Response.json({ messageId: '<fixture-message@example.com>' }, { status: 201 });
   } });

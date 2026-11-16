@@ -35,7 +35,7 @@ export class BrevoEmailSender implements EmailSender {
       const response = await this.fetchImpl('https://api.brevo.com/v3/smtp/email', {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(this.options.timeoutMs ?? 10_000),
         headers: { 'api-key': this.options.apiKey, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ sender: this.sender, to: [{ email: input.to }], subject: mail.subject, textContent: mail.text }),
+        body: JSON.stringify({ sender: this.sender, to: [{ email: input.to }], subject: mail.subject, textContent: mail.text, htmlContent: mail.html }),
       });
       // Do not retry email submission automatically: an uncertain response may already have sent a code.
       if (!response.ok) { await response.body?.cancel(); throw new EmailDeliveryError(response.status); }
