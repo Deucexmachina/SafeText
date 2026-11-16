@@ -54,6 +54,32 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [theme, toggleTheme] = useSiteTheme();
+
+  // When the server ends the session (an admin forced a logout, the account was
+  // disabled, or it expired), send the person to the landing page with the login
+  // dialog open, instead of leaving them on a page they can no longer use.
+  useEffect(() => {
+    const ended = () => navigate("/?auth=login&reason=session", { replace: true });
+    window.addEventListener("safetext:session-expired", ended);
+    return () => window.removeEventListener("safetext:session-expired", ended);
+  }, [navigate]);
+
+  // An idle tab makes no requests, so re-check the session when the person comes
+  // back to it (at most every 30 seconds) to catch a forced logout promptly.
+  useEffect(() => {
+    if (!user) return;
+    let lastCheck = Date.now();
+    const recheck = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastCheck < 30_000) return;
+      lastCheck = Date.now();
+      currentUser().catch(err => {
+        if (err instanceof ApiError && err.status === 401) window.dispatchEvent(new Event("safetext:session-expired"));
+      });
+    };
+    document.addEventListener("visibilitychange", recheck);
+    window.addEventListener("focus", recheck);
+    return () => { document.removeEventListener("visibilitychange", recheck); window.removeEventListener("focus", recheck); };
+  }, [user]);
   const notices = <>
     {status?.maintenance && <p className="notice banner" role="status">SafeText is under maintenance — new scans are paused. Please check back soon.</p>}
     {status?.announcement && <p className="notice banner" role="status">{status.announcement}</p>}

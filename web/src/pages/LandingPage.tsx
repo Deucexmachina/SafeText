@@ -100,10 +100,14 @@ export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => voi
   const [params, setParams] = useSearchParams();
 
   // Links from other public pages (e.g. "Back to log in") arrive as /?auth=login.
+  // An ended session (logged out by an admin, or expired) adds reason=session.
   useEffect(() => {
     const requested = params.get("auth");
     if (requested !== "login" && requested !== "register") return;
-    setAuth({ mode: requested });
+    const note = params.get("reason") === "session"
+      ? "You've been logged out. Please log in again to continue."
+      : undefined;
+    setAuth({ mode: requested, note });
     setParams({}, { replace: true });
   }, [params, setParams]);
 
