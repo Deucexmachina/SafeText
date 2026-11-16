@@ -31,6 +31,7 @@ export async function runStorageMaintenance(): Promise<void> {
     await pruneScans(client);
     await client.query('DELETE FROM sessions WHERE expires_at <= now()');
     await client.query("DELETE FROM auth_attempts WHERE window_start < now() - interval '1 day'");
+    await client.query("DELETE FROM password_resets WHERE expires_at < now() - interval '1 day'");
     await client.query("DELETE FROM admin_audit WHERE created_at < now() - $1 * interval '1 day'", [config.auditRetentionDays]);
     await client.query('COMMIT');
   } catch (err) { await client.query('ROLLBACK'); throw err; }

@@ -28,6 +28,18 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
   attempts INTEGER NOT NULL,
   window_start TIMESTAMPTZ NOT NULL
 );
+
+-- One active password-reset code per account; replaced on each request.
+CREATE TABLE IF NOT EXISTS password_resets (
+  user_id    UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  code_hash  TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  attempts   INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS password_resets_expires_idx ON password_resets(expires_at);
+
 CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS scans (

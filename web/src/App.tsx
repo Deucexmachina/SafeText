@@ -5,6 +5,7 @@ import { ScanDetailPage } from "./pages/ScanDetailPage";
 import { useEffect, useState } from "react";
 import { ApiError, currentUser, logout, type User } from "./api";
 import { AuthPage } from "./pages/AuthPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { AdminPage } from "./pages/AdminPage";
 import { NavigationMenu } from "./components/NavigationMenu";
 
@@ -41,10 +42,14 @@ export default function App() {
       </header>
       <main>
         {error && <p role="alert" className="error-box">{error} {!user && <button className="link-btn" onClick={loadSession}>Retry</button>}</p>}
-        {loading ? <p>Loading your account...</p> : !user ? (!error && <AuthPage onLogin={setUser} />) : <Routes key={user.id}>
+        {loading ? <p>Loading your account...</p> : !user ? (!error && <Routes>
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="*" element={<AuthPage onLogin={setUser} />} />
+        </Routes>) : <Routes key={user.id}>
           <Route path="/" element={<ScanPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/scan/:id" element={<ScanDetailPage />} />
+          <Route path="/forgot-password" element={<Navigate to="/" replace />} />
           <Route path="/admin" element={user.role === 'admin' ? <AdminPage /> : <Navigate to="/" replace />} />
         </Routes>}
       </main>

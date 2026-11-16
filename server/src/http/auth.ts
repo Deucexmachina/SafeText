@@ -1,9 +1,11 @@
-import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { Router, type Request, type RequestHandler } from "express";
 import { pool } from "../db/pool.js";
 import { config } from "../config.js";
 import { HttpError } from "./problem.js";
+import { emailSender } from "../providers/index.js";
+import { sleep } from "../lib/sleep.js";
 
 const derive = promisify(scrypt);
 const cookieName = "safetext_session";
@@ -87,7 +89,7 @@ for (const action of ["register", "login"] as const) {
       if (req.body?.role !== undefined || req.body?.disabled !== undefined) throw new HttpError(400, "Invalid request", "Account permissions cannot be set during registration or login.");
       const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
       const password: unknown = req.body?.password;
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 ||
+      if (!EMAIL_RE.test(email) || email.length > 254 ||
           typeof password !== "string" || password.length < 12 || password.length > 128) {
         throw new HttpError(400, "Invalid credentials", "Enter a valid email and a password of 12 to 128 characters.");
       }
@@ -136,6 +138,132 @@ for (const action of ["register", "login"] as const) {
     } catch (err) { next(err); }
   });
 }
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CODE_TTL_MS = 5 * 60 * 1000;
+const RESEND_COOLDOWN_MS = 60 * 1000;
+const MAX_CODE_ATTEMPTS = 8;
+
+function resetCodeHash(userId: string, code: string): string {
+  return createHash("sha256").update(`${userId}:${code}`).digest("hex");
+}
+
+// Shared check for /verify-reset-code and /reset-password. Wrong guesses burn
+// attempts and a code dies after MAX_CODE_ATTEMPTS. Callers turn every failure
+// into the same generic error so nothing about the account is revealed.
+async function validateResetCode(
+  email: string,
+  code: string,
+): Promise<{ ok: boolean; userId?: string }> {
+  const { rows } = await pool.query<{ id: string }>(
+    "SELECT id FROM users WHERE email = $1 AND NOT disabled",
+    [email],
+  );
+  const user = rows[0];
+  if (!user) return { ok: false };
+  const { rows: [row] } = await pool.query<{
+    code_hash: string; expires_at: Date; used_at: Date | null; attempts: number;
+  }>(
+    "SELECT code_hash, expires_at, used_at, attempts FROM password_resets WHERE user_id = $1",
+    [user.id],
+  );
+  if (!row || row.used_at || row.expires_at.getTime() <= Date.now() || row.attempts >= MAX_CODE_ATTEMPTS) {
+    return { ok: false };
+  }
+  if (timingSafeEqual(Buffer.from(row.code_hash), Buffer.from(resetCodeHash(user.id, code)))) {
+    return { ok: true, userId: user.id };
+  }
+  const attempts = row.attempts + 1;
+  await pool.query(
+    `UPDATE password_resets SET attempts = $2::int,
+       used_at = CASE WHEN $2::int >= $3::int THEN now() ELSE used_at END
+     WHERE user_id = $1`,
+    [user.id, attempts, MAX_CODE_ATTEMPTS],
+  );
+  return { ok: false };
+}
+
+// Always answers the same way: the response never reveals whether the address
+// is registered or whether an email was actually sent.
+authRouter.post("/forgot-password", limiter, async (req, res, next) => {
+  try {
+    if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!EMAIL_RE.test(email) || email.length > 254) {
+      throw new HttpError(400, "Invalid request", "Enter a valid email address.");
+    }
+    const { rows } = await pool.query<{ id: string; disabled: boolean }>(
+      "SELECT id, disabled FROM users WHERE email = $1", [email]);
+    const user = rows[0];
+    if (user && !user.disabled) {
+      const { rows: [existing] } = await pool.query<{ created_at: Date }>(
+        "SELECT created_at FROM password_resets WHERE user_id = $1", [user.id]);
+      const coolingDown = !!existing && Date.now() - existing.created_at.getTime() < RESEND_COOLDOWN_MS;
+      if (!coolingDown) {
+        const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+        await pool.query(
+          `INSERT INTO password_resets(user_id, code_hash, expires_at) VALUES($1, $2, $3)
+           ON CONFLICT(user_id) DO UPDATE
+             SET code_hash = $2, expires_at = $3, used_at = NULL, attempts = 0, created_at = now()`,
+          [user.id, resetCodeHash(user.id, code), new Date(Date.now() + CODE_TTL_MS)]);
+        try {
+          await emailSender.sendPasswordResetCode({ to: email, code, expiresMinutes: 5 });
+        } catch (err) {
+          console.warn("password reset email not delivered:", err instanceof Error ? err.message : err);
+        }
+      }
+    } else {
+      // Blunt the timing difference between known and unknown addresses.
+      await sleep(150 + Math.random() * 150);
+    }
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+authRouter.post("/verify-reset-code", limiter, async (req, res, next) => {
+  try {
+    if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    if (!EMAIL_RE.test(email) || !/^\d{6}$/.test(code)) {
+      throw new HttpError(400, "Invalid or expired code", "Enter the 6-digit code sent to the email.");
+    }
+    const { ok } = await validateResetCode(email, code);
+    if (!ok) throw new HttpError(400, "Invalid or expired code", "The code is invalid or has expired. Request a new one.");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+authRouter.post("/reset-password", limiter, async (req, res, next) => {
+  try {
+    if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    const password: unknown = req.body?.password;
+    if (!EMAIL_RE.test(email) || !/^\d{6}$/.test(code) ||
+        typeof password !== "string" || password.length < 12 || password.length > 128) {
+      throw new HttpError(400, "Invalid request", "Enter the 6-digit code and a password of 12 to 128 characters.");
+    }
+    const { ok, userId } = await validateResetCode(email, code);
+    if (!ok || !userId) throw new HttpError(400, "Invalid or expired code", "The code is invalid or has expired. Request a new one.");
+    const hash = await hashPassword(password);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Consumes the code atomically; a concurrent reset finds it already spent.
+      const { rows: consumed } = await client.query(
+        "UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL RETURNING user_id",
+        [userId]);
+      if (!consumed[0]) throw new HttpError(400, "Invalid or expired code", "The code is invalid or has expired. Request a new one.");
+      await client.query("UPDATE users SET password_hash = $2 WHERE id = $1", [userId, hash]);
+      // Sessions minted under the old password are all ended.
+      await client.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+      await client.query('COMMIT');
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 authRouter.get("/me", requireAuth, (req, res) => { res.json({ user: req.user }); });
 authRouter.post("/logout", async (req, res, next) => {
   try {
