@@ -73,7 +73,8 @@
   border-radius: 6px;
 }
 
-.lp a { color: var(--lp-link); }
+/* :where keeps this at plain `.lp a` priority so nav/menu link colours still win */
+.lp a:where(:not(.lp-btn)) { color: var(--lp-link); }
 
 .lp h1, .lp h2, .lp h3 {
   font-family: var(--lp-head-font);
@@ -133,7 +134,18 @@
   text-decoration: none;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
-.lp-btn:active { transform: translateY(1px); }
+.lp-btn:active:not(:disabled) { transform: translateY(1px); }
+.lp-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.lp-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: lp-spin 0.7s linear infinite;
+}
+@keyframes lp-spin { to { transform: rotate(360deg); } }
 .lp-btn-sm { min-height: 40px; padding: 8px 14px; font-size: 14px; }
 .lp-btn-lg { min-height: 52px; padding: 12px 24px; font-size: 16px; }
 

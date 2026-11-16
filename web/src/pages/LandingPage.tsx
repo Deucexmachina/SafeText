@@ -1,17 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { User } from "../api";
 import { AuthPage } from "./AuthPage";
+import { Logo, SiteNav, useSiteTheme, type AuthMode } from "../components/SiteNav";
 import "../landing.css";
-
-type AuthMode = "login" | "register";
-type Theme = "light" | "dark";
-
-const THEME_KEY = "safetext:theme";
-
-function readTheme(): Theme {
-  try { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; }
-  catch { return "light"; }
-}
 
 /* ------------------------------------------------------------------ */
 /* Icons (decorative unless labelled; text always carries the meaning) */
@@ -33,9 +25,6 @@ const IconImage = ({ size = 22 }: IconProps) => svg(size, <><rect x="3.5" y="4.5
 const IconEyeOff = ({ size = 22 }: IconProps) => svg(size, <><path d="M3 3l18 18" /><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.9M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></>);
 const IconKey = ({ size = 22 }: IconProps) => svg(size, <><circle cx="8" cy="15" r="4" /><path d="m10.8 12.2 9.2-9.2M17 6l2.5 2.5M14.5 8.5 16.5 10.5" /></>);
 const IconHistory = ({ size = 22 }: IconProps) => svg(size, <><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" /><path d="M3.5 4v4h4" /><path d="M12 8v4.5l3 2" /></>);
-const IconMenu = ({ open }: { open: boolean }) => svg(22, open ? <path d="M6 6l12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />);
-const IconMoon = () => svg(18, <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />);
-const IconSun = () => svg(18, <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>);
 const IconClose = () => svg(20, <path d="M6 6l12 12M18 6 6 18" />);
 
 const VERDICT_ICON = { safe: IconSafe, suspicious: IconSuspicious, malicious: IconMalicious, inconclusive: IconInconclusive };
@@ -44,10 +33,6 @@ type VerdictKey = keyof typeof VERDICT_ICON;
 function VerdictTag({ kind, label }: { kind: VerdictKey; label: string }) {
   const Icon = VERDICT_ICON[kind];
   return <span className={`lp-tag lp-tag-${kind}`}><Icon size={16} />{label}</span>;
-}
-
-function Logo() {
-  return <a href="#top" className="lp-logo"><span className="lp-logo-tile"><img src="/icon.png" alt="" /></span>SafeText</a>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -78,12 +63,6 @@ function AuthDialog({ mode, note, onClose, onLogin }: { mode: AuthMode | null; n
 /* ------------------------------------------------------------------ */
 /* Page content                                                        */
 /* ------------------------------------------------------------------ */
-
-const NAV = [
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#common-scams", label: "Common scams" },
-  { href: "#faq", label: "FAQ" },
-];
 
 const STEPS = [
   { icon: IconPaste, title: "Paste or upload", body: "Copy the text message, or upload a screenshot of it." },
@@ -116,54 +95,25 @@ const FAQS = [
 /* ------------------------------------------------------------------ */
 
 export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => void; notices?: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(readTheme);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, toggleTheme] = useSiteTheme();
   const [auth, setAuth] = useState<{ mode: AuthMode; note?: string } | null>(null);
+  const [params, setParams] = useSearchParams();
 
-  useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch { /* storage unavailable */ } }, [theme]);
+  // Links from other public pages (e.g. "Back to log in") arrive as /?auth=login.
   useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
+    const requested = params.get("auth");
+    if (requested !== "login" && requested !== "register") return;
+    setAuth({ mode: requested });
+    setParams({}, { replace: true });
+  }, [params, setParams]);
 
-  const openAuth = (mode: AuthMode, note?: string) => { setMenuOpen(false); setAuth({ mode, note }); };
+  const openAuth = (mode: AuthMode, note?: string) => setAuth({ mode, note });
   const checkMessage = () => openAuth("register", "Create an account or log in to check your first message.");
-  const themeToggle = (
-    <button type="button" className="lp-theme" aria-pressed={theme === "dark"} onClick={() => setTheme(t => (t === "dark" ? "light" : "dark"))}>
-      {theme === "dark" ? <IconSun /> : <IconMoon />}<span>Dark mode</span>
-    </button>
-  );
 
   return (
     <div className="lp" data-theme={theme} id="top">
-      <a className="lp-skip" href="#main-content">Skip to content</a>
-
-      {/* 1. Navbar */}
-      <header className="lp-nav">
-        <div className="lp-wrap lp-nav-inner">
-          <Logo />
-          <nav aria-label="Main" className="lp-nav-links">
-            {NAV.map(n => <a key={n.href} href={n.href}>{n.label}</a>)}
-          </nav>
-          <div className="lp-nav-actions">
-            <span className="lp-desktop-only">{themeToggle}</span>
-            <button type="button" className="lp-btn lp-btn-ghost lp-nav-login" onClick={() => openAuth("login")}>Log in</button>
-            <button type="button" className="lp-btn lp-btn-primary lp-btn-sm" onClick={() => openAuth("register")}>Sign up</button>
-            <button type="button" className="lp-burger" aria-expanded={menuOpen} aria-controls="lp-menu" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(o => !o)}>
-              <IconMenu open={menuOpen} />
-            </button>
-          </div>
-        </div>
-        <div id="lp-menu" className="lp-menu" hidden={!menuOpen}>
-          <nav aria-label="Mobile" className="lp-wrap">
-            {NAV.map(n => <a key={n.href} href={n.href} onClick={() => setMenuOpen(false)}>{n.label}</a>)}
-            <button type="button" className="lp-btn lp-btn-secondary" onClick={() => openAuth("login")}>Log in</button>
-            {themeToggle}
-          </nav>
-        </div>
-      </header>
+      {/* 1. Navbar (shared with the password-recovery pages) */}
+      <SiteNav theme={theme} onToggleTheme={toggleTheme} onAuth={openAuth} />
 
       {notices && <div className="lp-wrap lp-notices">{notices}</div>}
 
@@ -326,7 +276,7 @@ export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => voi
       <footer className="lp-footer">
         <div className="lp-wrap lp-footer-inner">
           <div>
-            <Logo />
+            <Logo href="#top" />
             <p>Developed by Group Nano</p>
           </div>
           <p className="lp-footer-note">An awareness aid, not a guarantee. When in doubt, don't click.</p>

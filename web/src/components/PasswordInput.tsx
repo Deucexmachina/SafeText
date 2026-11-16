@@ -7,6 +7,7 @@ export function PasswordInput({
   onChange,
   disabled,
   autoComplete = "new-password",
+  describedBy,
 }: {
   id: string;
   label: string;
@@ -14,6 +15,7 @@ export function PasswordInput({
   onChange: (value: string) => void;
   disabled?: boolean;
   autoComplete?: string;
+  describedBy?: string;
 }) {
   const [show, setShow] = useState(false);
   return (
@@ -32,6 +34,7 @@ export function PasswordInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
+          aria-describedby={describedBy}
         />
         <button
           type="button"

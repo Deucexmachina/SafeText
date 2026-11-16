@@ -57,9 +57,13 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
 
   // Logged-out visitors on the home page see the public landing page.
   // Login and sign-up open there in a dialog that reuses AuthPage.
-  if (!loading && !user && pathname === "/") {
+  // The password-recovery flow shares the landing page's navbar and styling.
+  if (!loading && !user && (pathname === "/" || pathname === "/forgot-password")) {
     const hasNotice = Boolean(status?.maintenance || status?.announcement || error);
-    return <LandingPage onLogin={onLogin} notices={hasNotice ? notices : undefined} />;
+    const pageNotices = hasNotice ? notices : undefined;
+    return pathname === "/"
+      ? <LandingPage onLogin={onLogin} notices={pageNotices} />
+      : <ForgotPasswordPage notices={pageNotices} />;
   }
 
   return <>

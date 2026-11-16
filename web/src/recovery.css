@@ -1,0 +1,266 @@
+/* ------------------------------------------------------------------ */
+/* Password recovery (/forgot-password). Builds on landing.css: same   */
+/* tokens (--lp-*), navbar, buttons, fonts and light/dark themes.      */
+/* ------------------------------------------------------------------ */
+
+.rc-page { display: flex; flex-direction: column; }
+
+.lp .rc-main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 20px 64px;
+  background:
+    radial-gradient(900px 380px at 50% -5%, var(--lp-tint), transparent 75%),
+    var(--lp-tint);
+}
+
+.rc-card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--lp-surface);
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius);
+  box-shadow: var(--lp-shadow);
+  padding: 32px;
+}
+
+.rc-card h1 {
+  font-size: clamp(1.5rem, 5vw, 1.75rem);
+  line-height: 1.2;
+  font-weight: 800;
+}
+.rc-card h1:focus { outline: none; }
+
+.rc-lead { margin: 8px 0 24px; color: var(--lp-muted); font-size: 16px; }
+.rc-email { color: var(--lp-heading); overflow-wrap: anywhere; }
+
+.rc-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--lp-chip);
+  color: var(--lp-chip-fg);
+  margin-bottom: 16px;
+}
+.rc-badge-success { width: 64px; height: 64px; border-radius: 50%; }
+
+/* Step indicator */
+.rc-steps {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 28px !important;
+  padding-bottom: 20px !important;
+  border-bottom: 1px solid var(--lp-border);
+}
+.rc-step-item {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lp-muted);
+}
+.rc-step-item:first-child { flex: 0 1 auto; }
+/* Connector line stretches to fill the space before each later step */
+.rc-step-item + .rc-step-item::before {
+  content: "";
+  flex: 1 1 12px;
+  min-width: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--lp-border);
+}
+.rc-step-dot {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--lp-border);
+  background: var(--lp-surface);
+  font-size: 12px;
+  font-weight: 800;
+}
+.rc-step-label { flex: none; white-space: nowrap; }
+.rc-step-item.is-current { color: var(--lp-heading); }
+.rc-step-item.is-current .rc-step-dot { border-color: var(--lp-btn-bg); color: var(--lp-heading); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-btn-bg) 20%, transparent); }
+.rc-step-item.is-done { color: var(--lp-heading); }
+.rc-step-item.is-done .rc-step-dot { border-color: var(--lp-btn-bg); background: var(--lp-btn-bg); color: var(--lp-btn-fg); }
+.rc-step-item.is-done + .rc-step-item::before { background: var(--lp-btn-bg); }
+
+/* Inputs: same look as the login dialog */
+.rc-input,
+.rc-card .password-field input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius-sm);
+  background: var(--lp-bg);
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 16px; /* stops iOS zoom on focus */
+  appearance: none;
+}
+.rc-card .password-field input { padding-right: 48px; }
+.rc-input:focus,
+.rc-card .password-field input:focus,
+.rc-code-box:focus {
+  outline: none;
+  border-color: var(--lp-link);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-link) 28%, transparent);
+}
+.rc-input:disabled,
+.rc-card .password-field input:disabled,
+.rc-code-box:disabled { background: var(--lp-surface-2); color: var(--lp-muted); }
+.rc-input[aria-invalid="true"],
+.rc-code-box[aria-invalid="true"] { border-color: var(--v-malicious); }
+
+.rc-card .field-label { color: var(--lp-heading); font-size: 14px; }
+.rc-card .password-field { margin-bottom: 0; }
+.rc-card .password-toggle { color: var(--lp-muted); width: 44px; }
+.rc-card .password-toggle:hover { color: var(--lp-link); }
+.rc-card .password-toggle:focus-visible { outline: 3px solid var(--lp-focus); outline-offset: -4px; }
+
+.rc-hint { margin: 8px 0 0; font-size: 14px; color: var(--lp-muted); }
+.rc-fine { margin: 12px 0 0; font-size: 13px; color: var(--lp-muted); text-align: center; }
+
+.rc-submit { width: 100%; margin-top: 20px; }
+
+/* Six-digit code */
+.rc-code { border: 0; margin: 0; padding: 0; min-width: 0; }
+.rc-code legend { padding: 0; margin-bottom: 8px; }
+.rc-code-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.rc-code-box {
+  width: 100%;
+  min-width: 0;
+  height: 56px;
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius-sm);
+  background: var(--lp-bg);
+  color: var(--lp-heading);
+  font-family: var(--lp-head-font);
+  font-size: 24px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  caret-color: var(--lp-link);
+  appearance: none;
+}
+
+/* Alerts: icon + text + border, never colour alone */
+.rc-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--lp-radius-sm);
+  border: 1px solid;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.rc-alert svg { flex: none; margin-top: 1px; }
+.rc-alert-error { background: #fff0f0; border-color: #f0b4b6; color: #9f1d22; }
+.rc-alert-info { background: var(--lp-chip); border-color: color-mix(in srgb, var(--lp-chip-fg) 30%, transparent); color: var(--lp-chip-fg); }
+.lp[data-theme="dark"] .rc-alert-error { background: #3a1416; border-color: #7a2a2e; color: #ffc9cb; }
+
+/* Password strength + checklist */
+.rc-meter-wrap { margin-top: 10px; }
+.rc-meter { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.rc-meter span { height: 6px; border-radius: 999px; background: var(--lp-border); transition: background-color 0.2s ease; }
+.rc-meter.s-1 span:nth-child(-n+1) { background: var(--v-malicious); }
+.rc-meter.s-2 span:nth-child(-n+2) { background: var(--v-suspicious); }
+.rc-meter.s-3 span:nth-child(-n+3) { background: var(--lp-green-mid); }
+.rc-meter.s-4 span { background: var(--v-safe); }
+.rc-meter-label { margin: 6px 0 0; font-size: 13px; color: var(--lp-muted); }
+.rc-meter-label strong { color: var(--lp-heading); }
+
+.rc-reqs { margin: 10px 0 18px !important; display: grid; gap: 6px; }
+.rc-req { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--lp-muted); }
+.rc-req-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--lp-surface-2);
+  border: 1px solid var(--lp-border);
+}
+.rc-req.is-met { color: var(--lp-heading); }
+.rc-req.is-met .rc-req-icon { background: var(--v-safe); border-color: var(--v-safe); color: #ffffff; }
+.rc-req.is-unmet .rc-req-icon { color: var(--v-malicious); }
+.lp[data-theme="dark"] .rc-req.is-unmet .rc-req-icon { color: #ff9ea2; }
+
+/* Links and secondary actions */
+.rc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  margin-top: 18px;
+  font-size: 14px;
+  color: var(--lp-muted);
+}
+.rc-row-stack { flex-direction: column; gap: 2px; }
+.rc-row-stack .rc-row { margin: 0; }
+.rc-link {
+  min-height: 36px;
+  padding: 4px 4px;
+  border: 0;
+  background: none;
+  color: var(--lp-link);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.rc-link:disabled { color: var(--lp-muted); text-decoration: none; cursor: not-allowed; }
+.rc-countdown { font-variant-numeric: tabular-nums; }
+
+.rc-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 20px;
+  padding-top: 16px;
+  width: 100%;
+  border-top: 1px solid var(--lp-border);
+  font-weight: 650;
+  text-decoration: none;
+}
+.rc-back:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.rc-done { text-align: center; }
+.rc-done .rc-lead { margin-bottom: 8px; }
+
+/* Mobile: full-width card, edge to edge */
+@media (max-width: 520px) {
+  .lp .rc-main { padding: 0; align-items: stretch; background: var(--lp-surface); }
+  .rc-card { max-width: none; border: 0; border-radius: 0; box-shadow: none; padding: 24px 20px 40px; }
+  .rc-step-item { font-size: 12px; gap: 6px; }
+  .rc-code-row { gap: 6px; }
+  .rc-code-box { height: 52px; font-size: 22px; }
+}
+@media (max-width: 360px) {
+  .rc-step-label { display: none; }
+  .rc-step-item.is-current .rc-step-label { display: inline; }
+}
+
+/* Subtle step transitions */
+@media (prefers-reduced-motion: no-preference) {
+  .rc-panel { animation: rc-in 0.25s ease-out; }
+}
+@keyframes rc-in { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
