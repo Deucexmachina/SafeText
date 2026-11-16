@@ -35,6 +35,7 @@ export function ForgotPasswordPage() {
   async function requestCode(event?: FormEvent) {
     event?.preventDefault();
     setError("");
+    if (!email.trim()) { setError("Enter your account email."); return; }
     setBusy(true);
     try {
       await forgotPassword(email.trim());
@@ -51,6 +52,7 @@ export function ForgotPasswordPage() {
   async function verify(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (!/^\d{6}$/.test(code.trim())) { setError("Enter the 6-digit code."); return; }
     setBusy(true);
     try {
       await verifyResetCode(email.trim(), code.trim());
@@ -69,6 +71,10 @@ export function ForgotPasswordPage() {
     setError("");
     if (password !== confirm) {
       setError("Passwords don't match.");
+      return;
+    }
+    if (password.length < 12 || password.length > 128) {
+      setError("Passwords must be 12 to 128 characters.");
       return;
     }
     setBusy(true);
@@ -90,7 +96,7 @@ export function ForgotPasswordPage() {
           <p className="muted">
             Enter your account email and we'll send you a 6-digit code.
           </p>
-          <form onSubmit={requestCode}>
+          <form onSubmit={requestCode} noValidate>
             <label className="field-label" htmlFor="email">
               Email
             </label>
@@ -123,7 +129,7 @@ export function ForgotPasswordPage() {
             If an account exists for {email}, we sent a 6-digit code. It
             expires in 5 minutes.
           </p>
-          <form onSubmit={verify}>
+          <form onSubmit={verify} noValidate>
             <label className="field-label" htmlFor="code">
               Verification code
             </label>
@@ -175,7 +181,7 @@ export function ForgotPasswordPage() {
       {step === "password" && (
         <>
           <h1>Create a new password</h1>
-          <form onSubmit={save}>
+          <form onSubmit={save} noValidate>
             <PasswordInput
               id="new-password"
               label="New password"

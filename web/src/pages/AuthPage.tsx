@@ -11,7 +11,10 @@ export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [busy, setBusy] = useState(false);
   const [loginFailed, setLoginFailed] = useState(false);
   async function submit(event: FormEvent) {
-    event.preventDefault(); setError(""); setBusy(true);
+    event.preventDefault(); setError("");
+    if (!email.trim() || !password) { setError("Enter your email and password."); return; }
+    if (action === "register" && (password.length < 12 || password.length > 128)) { setError("Passwords must be 12 to 128 characters."); return; }
+    setBusy(true);
     try { onLogin((await authenticate(action, email, password)).user); }
     catch (err) {
       if (action === "login" && err instanceof ApiError && err.status === 401) setLoginFailed(true);
@@ -22,7 +25,7 @@ export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   return <section className="card auth-card">
     <h1>{action === "login" ? "Welcome to SafeText" : "Create your account"}</h1>
     <p className="muted">Check messages and keep your scan history private.</p>
-    <form onSubmit={submit}>
+    <form onSubmit={submit} noValidate>
       <label className="field-label" htmlFor="email">Email</label>
       <input id="email" type="email" autoComplete="email" maxLength={254} required value={email} onChange={e => setEmail(e.target.value)} disabled={busy} />
       <PasswordInput id="password" label="Password" value={password} onChange={setPassword} disabled={busy} autoComplete={action === "login" ? "current-password" : "new-password"} />
