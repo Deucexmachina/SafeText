@@ -102,11 +102,20 @@ main h1 + .muted {
 }
 
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   font-size: 17px;
   letter-spacing: -0.01em;
   color: var(--accent);
   text-decoration: none;
+}
+
+.wordmark-icon {
+  height: 22px;
+  width: auto;
+  display: block;
 }
 
 .wordmark:hover {
@@ -266,6 +275,13 @@ main h1 + .muted {
 .auth-card {
   max-width: 440px;
   margin: 40px auto;
+}
+
+.auth-logo {
+  height: 56px;
+  width: auto;
+  display: block;
+  margin-bottom: 12px;
 }
 
 .auth-card input {

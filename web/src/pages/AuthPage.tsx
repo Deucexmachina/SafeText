@@ -23,6 +23,7 @@ export function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
     finally { setBusy(false); }
   }
   return <section className="card auth-card">
+    <img src="/icon.png" alt="SafeText" className="auth-logo" />
     <h1>{action === "login" ? "Welcome to SafeText" : "Create your account"}</h1>
     <p className="muted">Check messages and keep your scan history private.</p>
     <form onSubmit={submit} noValidate>

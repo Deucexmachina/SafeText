@@ -36,6 +36,7 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-inner">
           <Link to="/" className="wordmark">
+            <img src="/icon.png" alt="" className="wordmark-icon" />
             SafeText
           </Link>
           {user && <NavigationMenu key={user.id} isAdmin={user.role === "admin"} />}

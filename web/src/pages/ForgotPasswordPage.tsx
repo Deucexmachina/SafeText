@@ -90,6 +90,7 @@ export function ForgotPasswordPage() {
 
   return (
     <section className="card auth-card">
+      <img src="/icon.png" alt="SafeText" className="auth-logo" />
       {step === "email" && (
         <>
           <h1>Reset your password</h1>
