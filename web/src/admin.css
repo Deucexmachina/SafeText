@@ -205,7 +205,8 @@
 .ad-filters .ap-search input { min-height: 44px; }
 .ad-filter-status { display: flex; flex-wrap: wrap; gap: 6px; }
 .ad-filter-dates { display: flex; flex-wrap: wrap; gap: 10px; }
-.ad-filter-dates label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--lp-muted); font-weight: 600; flex: 1 1 140px; }
+.ad-filter-dates .ad-date-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 0; }
+.ad-filter-dates .ad-date-field > label { font-size: 13px; color: var(--lp-muted); font-weight: 600; }
 .ad-filter-buttons { display: flex; gap: 8px; }
 @media (min-width: 900px) {
   .ad .ad-filters { grid-template-columns: minmax(200px, 1fr) auto; align-items: end; padding: 18px 20px; }
@@ -596,4 +597,4 @@
 .lp[data-theme="dark"] .ad-seg-row label.is-on.is-warn { color: #ffe2a8; background: #33270e; border-color: #6e5320; }
 .ad-optional { font-weight: 400; color: var(--lp-muted); }
 .ad-until-row { display: flex; gap: 8px; align-items: center; }
-.ad-until-row .ad-input { max-width: 260px; }
+.ad-until-row .dp { max-width: 300px; }

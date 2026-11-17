@@ -1,0 +1,160 @@
+/* ------------------------------------------------------------------ */
+/* DatePicker: SafeText-styled replacement for the browser calendar.  */
+/* Uses the --lp-* tokens, so light and dark mode both work.          */
+/* ------------------------------------------------------------------ */
+
+.dp { position: relative; width: 100%; }
+
+.dp-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius-sm);
+  background: var(--lp-bg);
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.dp-trigger svg { flex: none; color: var(--lp-muted); }
+.dp-trigger.is-empty span { color: var(--lp-muted); }
+.dp-trigger:hover { border-color: var(--lp-link); }
+.dp-trigger:focus-visible, .dp-trigger[aria-expanded="true"] {
+  outline: none;
+  border-color: var(--lp-link);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-link) 28%, transparent);
+}
+.dp-trigger[aria-invalid="true"] { border-color: var(--v-malicious); }
+
+.dp-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  padding: 12px;
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius);
+  background: var(--lp-surface);
+  color: var(--lp-text);
+  box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.35);
+}
+/* Fields on the right side of a row open their calendar toward the left. */
+.dp-align-end .dp-pop { left: auto; right: 0; }
+
+.dp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.dp-title { margin: 0; font-family: var(--lp-head-font); font-size: 16px; font-weight: 800; color: var(--lp-heading); }
+.dp-nav {
+  display: inline-grid; place-items: center;
+  width: 36px; height: 36px;
+  border: 1px solid var(--lp-border);
+  border-radius: 10px;
+  background: var(--lp-surface);
+  color: var(--lp-heading);
+  cursor: pointer;
+}
+.dp-nav:hover:not(:disabled) { border-color: var(--lp-link); background: var(--lp-surface-2); }
+.dp-nav:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.dp-grid { display: grid; gap: 2px; }
+.dp-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-weekday { display: grid; place-items: center; height: 28px; font-size: 12px; font-weight: 700; color: var(--lp-muted); }
+.dp-day {
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.dp-day:hover:not(:disabled) { background: var(--lp-chip); color: var(--lp-heading); }
+.dp-day:focus-visible { outline: 3px solid var(--lp-focus); outline-offset: -1px; }
+.dp-day[aria-current="date"] { box-shadow: inset 0 0 0 2px var(--lp-link); }
+[aria-selected="true"] > .dp-day { background: var(--lp-btn-bg); color: var(--lp-btn-fg); box-shadow: none; }
+.dp-day:disabled { color: var(--lp-muted); opacity: 0.45; cursor: not-allowed; text-decoration: line-through; }
+
+.dp-time {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--lp-border);
+}
+.dp-time-label { margin-right: auto; font-size: 13px; font-weight: 700; color: var(--lp-muted); }
+.dp-stepper { display: inline-flex; align-items: center; border: 1px solid var(--lp-border); border-radius: 10px; overflow: hidden; }
+.dp-stepper button {
+  width: 30px; height: 34px;
+  border: 0; background: var(--lp-surface-2); color: var(--lp-heading);
+  font: inherit; font-size: 16px; font-weight: 700; cursor: pointer;
+}
+.dp-stepper button:hover { background: var(--lp-chip); }
+.dp-stepper span { min-width: 30px; text-align: center; font-weight: 700; color: var(--lp-heading); font-variant-numeric: tabular-nums; }
+.dp-colon { font-weight: 800; color: var(--lp-muted); }
+.dp-ampm { display: inline-flex; padding: 2px; border: 1px solid var(--lp-border); border-radius: 999px; margin-left: 4px; }
+.dp-ampm button {
+  min-width: 38px; height: 30px;
+  border: 0; border-radius: 999px;
+  background: transparent; color: var(--lp-muted);
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.dp-ampm button[aria-pressed="true"] { background: var(--lp-btn-bg); color: var(--lp-btn-fg); }
+.dp-stepper button:focus-visible, .dp-ampm button:focus-visible, .dp-nav:focus-visible, .dp-text-btn:focus-visible, .dp-done:focus-visible {
+  outline: 3px solid var(--lp-focus); outline-offset: 1px;
+}
+
+.dp-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.dp-foot-right { display: flex; align-items: center; gap: 6px; }
+.dp-text-btn {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--lp-link);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dp-text-btn:hover { background: var(--lp-surface-2); }
+.dp-done {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--lp-btn-bg);
+  color: var(--lp-btn-fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dp-pop { animation: dp-in 0.14s ease-out; }
+}
+@keyframes dp-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* With time controls the calendar needs a little more room for one tidy time row. */
+.dp-pop:has(.dp-time) { width: 344px; }
+.dp-time { flex-wrap: nowrap; }
+/* On phones fields are full width, so every calendar opens from the left edge. */
+@media (max-width: 560px) {
+  .dp-align-end .dp-pop { left: 0; right: auto; }
+  .dp-time { flex-wrap: wrap; }
+}

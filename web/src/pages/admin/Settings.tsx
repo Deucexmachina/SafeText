@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { getAdminSettings, saveAdminSettings, type AdminSettings } from "../../api";
 import { ErrorAlert, Icons, Loading, Section } from "./ui";
 import { Banner } from "../../components/StatusBanners";
+import { DatePicker } from "../../components/DatePicker";
 
 /* <input type="datetime-local"> works in local time without a zone; the API stores ISO (UTC). */
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -123,10 +124,12 @@ export function Settings() {
             <div className="ad-field">
               <label htmlFor="set-announcement-until" className="ad-label">Show until <span className="ad-optional">(optional)</span></label>
               <div className="ad-until-row">
-                <input id="set-announcement-until" className="ad-input" type="datetime-local" min={toLocalInput(new Date().toISOString())}
-                  value={toLocalInput(settings.announcementUntil)} aria-invalid={untilInvalid || undefined} aria-describedby="set-announcement-until-help"
-                  onChange={e => update({ announcementUntil: fromLocalInput(e.target.value) })} />
-                {settings.announcementUntil && <button type="button" className="ad-btn" onClick={() => update({ announcementUntil: null })}>Clear</button>}
+                <DatePicker id="set-announcement-until" withTime placeholder="No end time"
+                  value={toLocalInput(settings.announcementUntil)}
+                  min={toLocalInput(new Date().toISOString()).slice(0, 10)}
+                  max={toLocalInput(new Date(Date.now() + 365 * 86_400_000).toISOString()).slice(0, 10)}
+                  invalid={untilInvalid} describedBy="set-announcement-until-help"
+                  onChange={v => update({ announcementUntil: fromLocalInput(v) })} />
               </div>
               <p id="set-announcement-until-help" className={`ad-help${untilInvalid || (untilPast && !untilChanged) ? " is-bad" : ""}`}>
                 {untilInvalid

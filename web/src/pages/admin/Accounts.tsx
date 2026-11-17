@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { forceLogoutUser, listUsers, setUserDisabled, type AdminUser, type UserFilter } from "../../api";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DatePicker } from "../../components/DatePicker";
 import { Empty, ErrorAlert, Icons, Loading, Pager, Section, ago, fmt } from "./ui";
 
 const EMPTY_FILTER: UserFilter = { search: "", status: "", from: "", to: "" };
@@ -129,12 +130,16 @@ export function Accounts() {
           ))}
         </div>
         <div className="ad-filter-dates">
-          <label>Joined from
-            <input type="date" max={draft.to || today} value={draft.from} onChange={e => setDraft({ ...draft, from: e.target.value })} />
-          </label>
-          <label>to
-            <input type="date" min={draft.from || undefined} max={today} value={draft.to} onChange={e => setDraft({ ...draft, to: e.target.value })} />
-          </label>
+          <div className="ad-date-field">
+            <label htmlFor="joined-from">Joined from</label>
+            <DatePicker id="joined-from" value={draft.from} max={draft.to || today} placeholder="Any date"
+              onChange={from => setDraft({ ...draft, from })} />
+          </div>
+          <div className="ad-date-field dp-align-end">
+            <label htmlFor="joined-to">to</label>
+            <DatePicker id="joined-to" value={draft.to} min={draft.from || undefined} max={today} placeholder="Any date"
+              onChange={to => setDraft({ ...draft, to })} />
+          </div>
         </div>
         <div className="ad-filter-buttons">
           <button className="lp-btn lp-btn-primary lp-btn-sm" type="submit" disabled={loading}>Apply</button>
