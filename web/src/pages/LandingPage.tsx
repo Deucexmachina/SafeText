@@ -199,7 +199,7 @@ export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => voi
         <section id="common-scams" className="lp-section" aria-labelledby="scams-title">
           <div className="lp-wrap">
             <h2 id="scams-title" className="lp-h2">Common scams</h2>
-            <p className="lp-sub">Scams like these often target students. Learn the tell-tale sign of each.</p>
+            <p className="lp-sub">Scams like these often target you. Learn the tell-tale sign of each.</p>
             <ul className="lp-grid4">
               {SCAMS.map(s => (
                 <li key={s.title} className="lp-card lp-scam">
