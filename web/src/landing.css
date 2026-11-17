@@ -340,7 +340,7 @@
   .lp-hero { padding-block: 64px 80px; }
   /* Headline sits at the top beside the (tall) example card, not centred below the fold */
   .lp-hero-grid { grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: start; }
-  .lp-hero-copy { padding-top: 48px; }
+  .lp-hero-copy { padding-top: 40px; }
 }
 
 /* Mock result card */
@@ -358,11 +358,32 @@
 }
 
 /* Hero example: the shared ResultCard (result.css) inside a captioned figure */
-.lp-example { position: relative; margin: 0; width: 100%; max-width: 500px; justify-self: center; }
+.lp-example { position: relative; margin: 0; width: 100%; max-width: 460px; justify-self: center; }
 .lp-example .sr-card { padding: 20px; }
-/* A little tighter than the full result page so the hero stays compact */
-.lp-example .sr-section, .lp-example .sr-next { margin-top: 18px; }
-.lp-example .sr-confidence { margin-top: 14px; }
+/* Compact version of the result card for the hero */
+.lp-example .sr-card { padding: 16px 18px; font-size: 15px; }
+.lp-example .sr-verdict .ap-tag { font-size: 16px; padding: 5px 12px 5px 9px; gap: 6px; }
+.lp-example .sr-verdict .ap-tag svg { width: 18px; height: 18px; }
+.lp-example .sr-lang { padding: 2px; }
+.lp-example .sr-lang button { min-height: 32px; padding: 0 11px; font-size: 13px; }
+.lp-example .sr-confidence { margin-top: 10px; }
+.lp-example .sr-score { font-size: 14px; }
+.lp-example .sr-score strong { font-size: 22px; }
+.lp-example .sr-meter { margin-top: 6px; height: 6px; }
+.lp-example .sr-section, .lp-example .sr-next { margin-top: 14px; }
+.lp-example .sr-label { margin-bottom: 6px !important; font-size: 11px; }
+.lp-example .sr-bubble { padding: 9px 12px 10px; font-size: 14px; line-height: 1.5; }
+.lp-example .sr-reminder { margin-top: 8px; font-size: 13px; }
+.lp-example .sr-reasons { gap: 4px; }
+.lp-example .sr-reasons li { font-size: 15px; }
+.lp-example .sr-next { padding: 12px 14px; }
+.lp-example .sr-next-title { margin-bottom: 8px !important; font-size: 15px; }
+.lp-example .sr-steps { gap: 6px; }
+.lp-example .sr-steps li { font-size: 14px; line-height: 1.45; }
+.lp-example .sr-step-check { width: 18px; height: 18px; margin-top: 1px; }
+.lp-example .sr-details { gap: 4px; }
+.lp-example .sr-details > div { padding: 7px 10px; font-size: 14px; }
+.lp-example .sr-details code { font-size: 13px; }
 .lp-example .lp-result-cap { z-index: 1; }
 
 .lp-result-cap {

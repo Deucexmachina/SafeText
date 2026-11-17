@@ -93,8 +93,9 @@ function readLang(): Lang {
   try { return localStorage.getItem("safetext:lang") === "tl" ? "tl" : "en"; } catch { return "en"; }
 }
 
-/** `preview` renders a static example (the landing page): no feedback buttons
- *  or scan-ID footer, since those need a signed-in user, and at most 3 steps. */
+/** `preview` renders a compact static example (the landing page): no feedback
+ *  buttons or scan-ID footer (they need a signed-in user), no helper notes, and
+ *  at most 2 steps. */
 export function ResultCard({ scan, preview = false }: { scan: ScanResult; preview?: boolean }) {
   const a = scan.analysis;
   const verdict = a?.verdict ?? "INCONCLUSIVE";
@@ -152,7 +153,7 @@ export function ResultCard({ scan, preview = false }: { scan: ScanResult; previe
   const sender = a?.entities.senderId && !/^unknown$/i.test(a.entities.senderId.trim()) ? a.entities.senderId : null;
   const hasHighlights = scan.riskyParts.phrases.length > 0 || scan.riskyParts.links.length > 0;
   const allSteps = t.steps[verdict] ?? [];
-  const steps = preview ? allSteps.slice(0, 3) : allSteps;
+  const steps = preview ? allSteps.slice(0, 2) : allSteps;
 
   return (
     <section className={`sr-card sr-${kind}`} aria-labelledby="sr-verdict">
@@ -187,13 +188,13 @@ export function ResultCard({ scan, preview = false }: { scan: ScanResult; previe
       {/* c. Message checked */}
       {scan.extraction?.text && (
         <div className="sr-section">
-          <h3 className="sr-label">Message checked</h3>
+          <h3 className={preview ? "visually-hidden" : "sr-label"}>Message checked</h3>
           {scan.extraction.note && <p className="sr-note">{scan.extraction.note}</p>}
           <blockquote className={`sr-bubble${risky ? " is-risky" : " is-calm"}`}>
             {sender && <span className="sr-bubble-from">{sender}</span>}
             {highlight(scan.extraction.text, scan.riskyParts)}
           </blockquote>
-          {hasHighlights && <p className="sr-note">{risky ? t.riskyNote : "Words SafeText looked at closely are underlined."}</p>}
+          {hasHighlights && !preview && <p className="sr-note">{risky ? t.riskyNote : "Words SafeText looked at closely are underlined."}</p>}
           {risky && <p className="sr-reminder"><IconHand /><span>Don't click links in suspicious messages.</span></p>}
         </div>
       )}
