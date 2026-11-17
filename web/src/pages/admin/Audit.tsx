@@ -40,9 +40,6 @@ function Affected({ entry }: { entry: AuditEntry }) {
   return <span className="ad-audit-detail">{entry.details}</span>;
 }
 
-function ReasonPreview({ reason }: { reason: string | null }) {
-  return reason ? <span className="ad-reason-preview" title={reason}>{reason}</span> : <span className="ad-no-reason">No reason given</span>;
-}
 
 /* Page numbers with ellipses: 1 … 4 5 6 … 12 */
 function pageItems(current: number, count: number): (number | "gap")[] {
@@ -220,7 +217,7 @@ export function Audit() {
   else body = <>
     <div className="ad-table-wrap">
       <table className="ad-table ad-audit-table">
-        <thead><tr><th scope="col">Time</th><th scope="col">Action</th><th scope="col">Affected</th><th scope="col">By</th><th scope="col">Reason</th></tr></thead>
+        <thead><tr><th scope="col">Time</th><th scope="col">Action</th><th scope="col">Affected</th><th scope="col">By</th><th scope="col"><span className="visually-hidden">Details</span></th></tr></thead>
         <tbody>{audit.map(entry => (
           <tr key={String(entry.id)} className="ad-row-click" tabIndex={0} aria-haspopup="dialog"
             aria-label={`${actionLabel(entry.action)}, ${ago(entry.createdAt)}. Open details`}
@@ -229,7 +226,7 @@ export function Audit() {
             <td><ActionPill action={entry.action} /></td>
             <td><Affected entry={entry} /></td>
             <td className="ap-muted">{actorOf(entry)}</td>
-            <td><span className="ad-reason-cell"><ReasonPreview reason={entry.reason} /><span className="ad-row-chevron" aria-hidden="true"><IconChevron /></span></span></td>
+            <td className="ad-chevron-cell"><span className="ad-row-chevron" aria-hidden="true"><IconChevron /></span></td>
           </tr>
         ))}</tbody>
       </table>
@@ -241,7 +238,7 @@ export function Audit() {
             <span className="ad-card-top"><ActionPill action={entry.action} /><span className="ap-muted ad-sub">{ago(entry.createdAt)}</span></span>
             <Affected entry={entry} />
             <span className="ap-muted ad-sub">By {actorOf(entry)}</span>
-            <span className="ad-reason-cell"><ReasonPreview reason={entry.reason} /><span className="ad-row-chevron" aria-hidden="true"><IconChevron /></span></span>
+            <span className="ad-card-chevron ad-row-chevron" aria-hidden="true"><IconChevron /></span>
           </button>
         </li>
       ))}
