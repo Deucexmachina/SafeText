@@ -25,6 +25,7 @@ export interface ScanResult {
   scanId: string;
   status: ScanStatus;
   extraction: { text: string; note?: string } | null;
+  riskyParts: { phrases: string[]; links: string[] };
   analysis: Analysis | null;
   threatIntel: { urls: ThreatUrl[] } | null;
   incomplete: string[];
