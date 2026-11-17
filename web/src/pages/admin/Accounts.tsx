@@ -64,11 +64,11 @@ export function Accounts() {
     } finally { setBusy(false); }
   }
 
-  async function forceLogout(user: AdminUser) {
+  async function forceLogout(user: AdminUser, reason: string) {
     if (busy) return;
     setBusy(true); setDialogError("");
     try {
-      await forceLogoutUser(user.id);
+      await forceLogoutUser(user.id, reason);
       setPendingLogout(null);
       setNotice(`${user.email} was logged out of every device.`);
     } catch (err) {
@@ -100,7 +100,8 @@ export function Accounts() {
         confirmLabel={pendingUser.disabled ? "Enable account" : "Disable account"}
         busyLabel={pendingUser.disabled ? "Enabling..." : "Disabling..."} busy={busy}
         danger={!pendingUser.disabled}
-        reason={!pendingUser.disabled} password
+        reason password reasonRequired={!pendingUser.disabled}
+        reasonHint={pendingUser.disabled ? "Recorded in the audit log." : "Shown to the user when they try to log in, and recorded in the audit log."}
         error={dialogError}
         onCancel={() => { setPendingUser(null); setDialogError(""); }}
         onConfirm={values => void toggle(pendingUser, values.password, values.reason)}
@@ -109,9 +110,10 @@ export function Accounts() {
         title="Log this account out?"
         message={`Every active session for ${pendingLogout.email} will be ended. The account stays enabled and can sign in again.`}
         confirmLabel="Force logout" busyLabel="Logging out..." busy={busy}
+        reason reasonRequired={false} reasonHint="Recorded in the audit log."
         error={dialogError}
         onCancel={() => { setPendingLogout(null); setDialogError(""); }}
-        onConfirm={() => void forceLogout(pendingLogout)}
+        onConfirm={values => void forceLogout(pendingLogout, values.reason)}
       />}
 
       <form className="ap-card ad-filters" onSubmit={applyFilter}>

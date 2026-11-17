@@ -41,6 +41,8 @@ ALTER TABLE admin_audit ADD COLUMN IF NOT EXISTS reason TEXT;
 -- Domain, settings and export actions have no target account; details records what changed.
 ALTER TABLE admin_audit ALTER COLUMN target_id DROP NOT NULL;
 ALTER TABLE admin_audit ADD COLUMN IF NOT EXISTS details TEXT;
+-- Changes made from the server command line (admin:grant) have no admin actor.
+ALTER TABLE admin_audit ALTER COLUMN actor_id DROP NOT NULL;
 
 -- Runtime-tunable knobs set from the admin UI; absent keys fall back to env config.
 CREATE TABLE IF NOT EXISTS settings (

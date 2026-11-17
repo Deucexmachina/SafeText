@@ -143,9 +143,9 @@ export function setUserDisabled(id: string, disabled: boolean, confirmation: { p
     body: JSON.stringify({ disabled, password: confirmation.password, ...(confirmation.reason ? { reason: confirmation.reason } : {}) }),
   });
 }
-export function forceLogoutUser(id: string) {
+export function forceLogoutUser(id: string, reason = "") {
   return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(id)}/force-logout`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: "{}",
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reason ? { reason } : {}),
   });
 }
 export interface AdminOverview {
@@ -191,9 +191,18 @@ export function saveAdminSettings(body: Partial<AdminSettings>) {
 }
 // targetEmail is null for actions that don't affect an account (domains, settings,
 // exports); details then says what changed, e.g. "Retention (days): 30 → 14".
-export interface AuditEntry { id: number; actorEmail: string; targetEmail: string | null; action: string; reason: string | null; details: string | null; createdAt: string }
-export function listAudit(offset = 0) {
-  return request<{ audit: AuditEntry[] }>(`/api/v1/admin/audit?limit=20&offset=${offset}`);
+export interface AuditView {
+  fields: { label: string; value: string; mono?: boolean }[];
+  changes: { label: string; before: string; after: string }[];
+  note: string | null;
+}
+// actorEmail is null for changes made from the server command line (admin:grant).
+// view is a friendly, privacy-safe breakdown of the entry, built by the server.
+export interface AuditEntry { id: number | string; actorEmail: string | null; targetEmail: string | null; action: string; reason: string | null; details: string | null; createdAt: string; view?: AuditView }
+export interface AuditPage { audit: AuditEntry[]; total: number; page: number; pageSize: number }
+export const AUDIT_PAGE_SIZE = 15;
+export function listAudit(page = 1) {
+  return request<AuditPage>(`/api/v1/admin/audit?page=${page}&pageSize=${AUDIT_PAGE_SIZE}`);
 }
 export async function downloadAuditCsv() {
   const res = await fetch('/api/v1/admin/audit?format=csv');

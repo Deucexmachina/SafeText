@@ -48,6 +48,9 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
         env: { ...process.env, DATABASE_URL: url.href },
       });
       assert.equal(granted.status, 0, granted.stderr);
+      const grant = (await pool.query("SELECT actor_id, target_id, details FROM admin_audit WHERE action = 'grant_admin'")).rows;
+      assert.equal(grant.length, 1, 'granting admin from the command line is audited');
+      assert.equal(grant[0].actor_id, null); assert.equal(grant[0].target_id, regular.id);
       assert.equal((await pool.query("SELECT count(*)::int AS count FROM users WHERE role = 'admin'")).rows[0].count, 2);
       assert.equal((await call('/auth/me', 'GET', undefined, regular.cookie)).status, 401, 'promotion revokes only the promoted account sessions');
       const login = await call('/auth/login', 'POST', { email: 'regular@example.com', password });
@@ -87,7 +90,7 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
       assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: false, password }, operator.cookie)).status, 200);
       assert.equal((await call('/auth/me', 'GET', undefined, regular.cookie)).status, 401);
       assert.equal((await call('/auth/login', 'POST', { email: 'regular@example.com', password })).status, 200);
-      assert.equal((await pool.query('SELECT count(*)::int AS count FROM admin_audit')).rows[0].count, 2);
+      assert.equal((await pool.query("SELECT count(*)::int AS count FROM admin_audit WHERE action <> 'grant_admin'")).rows[0].count, 2);
     });
     await t.test('confirmation password, force logout, filters, activity fields and audit export', async () => {
       // The admin's own password is required before access changes.
@@ -168,6 +171,103 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
       entry = await latest();
       assert.equal(entry.action, 'export_audit'); assert.match(entry.details!, /^\d+ entr(y|ies)$/);
       await pool.query("DELETE FROM admin_audit WHERE action = 'test_formula'");
+    });
+    await t.test('audit log: 15 per page with totals, friendly details for every action, reasons, admin-only', async () => {
+      type View = { fields: { label: string; value: string }[]; changes: { label: string; before: string; after: string }[]; note: string | null };
+      type Entry = { id: number; action: string; reason: string | null; actorEmail: string | null; targetEmail: string | null; view: View };
+      type Page = { audit: Entry[]; total: number; page: number; pageSize: number };
+      const get = (query: string, cookie = operator.cookie) => call(`/admin/audit?${query}`, 'GET', undefined, cookie);
+      const all = async () => (await (await get('page=1&pageSize=100')).json() as Page).audit;
+      const newest = async (action: string) => (await all()).find(e => e.action === action)!;
+      const field = (e: Entry, label: string) => e.view.fields.find(f => f.label === label)?.value;
+
+      // Admin-only: anonymous and non-admin callers are refused.
+      assert.equal((await get('page=1', '')).status, 401);
+      const fresh = (await call('/auth/login', 'POST', { email: 'regular@example.com', password })).headers.get('set-cookie')!.split(';')[0];
+      assert.equal((await get('page=1', fresh)).status, 403);
+
+      // Forced logout: optional reason, and the number of sessions ended is recorded.
+      await call('/auth/login', 'POST', { email: 'regular@example.com', password });
+      await call('/auth/login', 'POST', { email: 'regular@example.com', password });
+      const live = (await pool.query('SELECT count(*)::int AS c FROM sessions WHERE user_id = $1', [regular.id])).rows[0].c as number;
+      assert.equal((await call(`/admin/users/${regular.id}/force-logout`, 'POST', { reason: 'Shared lab computer' }, operator.cookie)).status, 200);
+      let entry = await newest('force_logout');
+      assert.equal(entry.reason, 'Shared lab computer'); assert.equal(entry.targetEmail, 'regular@example.com');
+      assert.equal(field(entry, 'Account'), 'regular@example.com'); assert.equal(field(entry, 'Sessions ended'), String(live));
+      assert.equal((await call(`/admin/users/${regular.id}/force-logout`, 'POST', { reason: 'x'.repeat(501) }, operator.cookie)).status, 400);
+      assert.equal((await call(`/admin/users/${regular.id}/force-logout`, 'POST', { reason: 42 }, operator.cookie)).status, 400);
+
+      // Disable: reason required, up to 500 characters; status change shown.
+      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true, reason: 'y'.repeat(501), password }, operator.cookie)).status, 400);
+      const longReason = 'Repeated scam submissions. '.repeat(18).slice(0, 500);
+      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true, reason: longReason, password }, operator.cookie)).status, 200);
+      entry = await newest('disable_user');
+      assert.equal(entry.reason, longReason.trim());
+      assert.deepEqual(entry.view.changes, [{ label: 'Status', before: 'Active', after: 'Disabled' }]);
+      assert.equal(field(entry, 'Sessions ended'), '0');
+      // Enable: reason optional.
+      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: false, reason: 'Appeal accepted', password }, operator.cookie)).status, 200);
+      entry = await newest('enable_user');
+      assert.equal(entry.reason, 'Appeal accepted');
+      assert.deepEqual(entry.view.changes, [{ label: 'Status', before: 'Disabled', after: 'Active' }]);
+
+      // Domains, settings and exports (created by the previous test) get friendly fields.
+      entry = await newest('add_domain');
+      assert.equal(field(entry, 'Domain'), 'audit-test.example'); assert.equal(field(entry, 'Added to'), 'Blocklist');
+      assert.match(entry.view.note!, /always flagged/);
+      entry = await newest('move_domain');
+      assert.deepEqual(entry.view.changes, [{ label: 'List', before: 'Blocklist', after: 'Allowlist' }]);
+      entry = await newest('remove_domain');
+      assert.equal(field(entry, 'Removed from'), 'Allowlist'); assert.match(entry.view.note!, /no longer on any list/);
+      const settingsEntries = (await all()).filter(e => e.action === 'update_settings');
+      const announced = settingsEntries.find(e => e.view.changes.some(c => c.label === 'Announcement' && c.after === 'Exams week'))!;
+      assert(announced, 'announcement change is shown as before → after text, without quotes');
+      assert.equal(announced.view.changes.find(c => c.label === 'Announcement')!.before, 'None');
+      assert(announced.view.changes.some(c => c.label === 'Retention (days)' && /^\d+$/.test(c.before) && /^\d+$/.test(c.after)));
+      assert(announced.view.changes.some(c => c.label === 'Maintenance mode' && ['on', 'off'].includes(c.after)));
+      entry = await newest('export_audit');
+      assert.match(field(entry, 'Entries exported')!, /^\d+$/); assert.equal(field(entry, 'Format'), 'CSV file');
+      // Role change from the command line: no admin actor.
+      entry = await newest('grant_admin');
+      assert.equal(entry.actorEmail, null);
+      assert.deepEqual(entry.view.changes, [{ label: 'Role', before: 'User', after: 'Admin' }]);
+      // Older entries without extra data get a short note instead of an empty panel.
+      await pool.query("INSERT INTO admin_audit(actor_id, target_id, action) VALUES($1, $2, 'force_logout')", [operator.id, regular.id]);
+      await pool.query("INSERT INTO admin_audit(actor_id, action) VALUES($1, 'legacy_unknown')", [operator.id]);
+      const legacy = await all();
+      assert.match(legacy.find(e => e.action === 'force_logout' && !field(e, 'Sessions ended'))!.view.note!, /not recorded/);
+      assert.equal(legacy.find(e => e.action === 'legacy_unknown')!.view.note, 'No additional details were recorded for this action.');
+
+      // Pagination: 15 per page, newest first, exact boundaries and total count.
+      await pool.query(`INSERT INTO admin_audit(actor_id, action, details, created_at)
+        SELECT $1, 'bulk_test', 'row ' || n, now() - interval '30 days' - n * interval '1 minute' FROM generate_series(1, 31) n`, [operator.id]);
+      const total = (await pool.query('SELECT count(*)::int AS c FROM admin_audit')).rows[0].c as number;
+      const pages: Page[] = [];
+      for (let n = 1; n <= Math.ceil(total / 15) + 1; n++) {
+        const res = await get(`page=${n}`); assert.equal(res.status, 200);
+        pages.push(await res.json() as Page);
+      }
+      assert(pages.every(p => p.total === total && p.pageSize === 15));
+      pages.slice(0, -2).forEach(p => assert.equal(p.audit.length, 15));
+      assert.equal(pages.at(-2)!.audit.length, total - 15 * (pages.length - 2));
+      assert.equal(pages.at(-1)!.audit.length, 0, 'a page past the end is empty, not an error');
+      const ids = pages.flatMap(p => p.audit.map(e => e.id));
+      assert.equal(new Set(ids).size, total, 'pages do not overlap or skip entries');
+      const newestId = (await pool.query('SELECT id FROM admin_audit ORDER BY created_at DESC, id DESC LIMIT 1')).rows[0].id;
+      assert.equal(String(pages[0].audit[0].id), String(newestId), 'newest entry first');
+      assert.equal(pages.at(-2)!.audit.at(-1)!.action, 'bulk_test', 'oldest entries on the last page');
+      for (const bad of ['page=0', 'page=abc', 'page=1&pageSize=101', 'page=-2']) assert.equal((await get(bad)).status, 400, bad);
+
+      // Privacy: no message text, password hashes or session data anywhere in the log or export.
+      const json = JSON.stringify(pages);
+      const csv = await (await get('format=csv')).text();
+      for (const secret of ['private SMS', 'password_hash', 'token_hash', 'secret message body']) {
+        assert(!json.includes(secret) && !csv.includes(secret), secret);
+      }
+      assert.match(csv, /time,actor,target,action,reason,details/);
+      assert.match(csv, /Shared lab computer/);
+      assert.match(csv, /Server operator \(command line\)/);
+      await pool.query("DELETE FROM admin_audit WHERE action IN ('bulk_test', 'legacy_unknown')");
     });
     await t.test('admin overview reports aggregate stats and provider health without message content', async () => {
       await pool.query(

@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
-import { downloadAuditCsv, listAudit, type AuditEntry } from "../../api";
-import { Empty, ErrorAlert, Icons, Loading, Pager, Section, ago, fmt } from "./ui";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
+import { AUDIT_PAGE_SIZE, downloadAuditCsv, listAudit, type AuditEntry, type AuditPage } from "../../api";
+import { svgIcon } from "../../components/SiteNav";
+import { Empty, ErrorAlert, Icons, Loading, Section, ago, fmt } from "./ui";
 
 const ACTIONS: Record<string, { label: string; tone: string; icon: () => JSX.Element }> = {
   disable_user: { label: "Disabled account", tone: "is-bad", icon: Icons.lock },
   enable_user: { label: "Enabled account", tone: "is-ok", icon: Icons.unlock },
   force_logout: { label: "Forced logout", tone: "is-muted", icon: Icons.logout },
+  grant_admin: { label: "Granted admin role", tone: "is-muted", icon: Icons.users },
   add_domain: { label: "Added domain", tone: "is-muted", icon: Icons.globe },
   move_domain: { label: "Moved domain", tone: "is-muted", icon: Icons.globe },
   remove_domain: { label: "Removed domain", tone: "is-muted", icon: Icons.trash },
@@ -13,36 +16,171 @@ const ACTIONS: Record<string, { label: string; tone: string; icon: () => JSX.Ele
   export_audit: { label: "Exported audit log", tone: "is-muted", icon: Icons.download },
 };
 
-/* What the action affected: the account, or (domains, settings, exports) what changed.
-   Several setting changes arrive joined by "; " and are shown one per line. */
-function Affected({ entry }: { entry: AuditEntry }) {
-  if (entry.targetEmail) return <span className="ad-email">{entry.targetEmail}</span>;
-  if (!entry.details) return <span className="ap-muted">—</span>;
-  const parts = entry.details.split("; ");
-  return parts.length === 1
-    ? <span className="ad-audit-detail">{entry.details}</span>
-    : <ul className="ad-audit-detail">{parts.map((part, i) => <li key={i}>{part}</li>)}</ul>;
-}
+const OPERATOR = "Server operator (command line)";
+const IconChevron = () => svgIcon(18, <path d="m9 6 6 6-6 6" />);
+const IconClose = () => svgIcon(20, <path d="M6 6l12 12M18 6 6 18" />);
+
+const actionLabel = (action: string) => ACTIONS[action]?.label ?? action;
+const actorOf = (entry: AuditEntry) => entry.actorEmail ?? OPERATOR;
 
 function ActionPill({ action }: { action: string }) {
   const a = ACTIONS[action];
   return a ? <span className={`ad-pill ${a.tone}`}>{a.icon()}{a.label}</span> : <span className="ad-pill is-muted">{action}</span>;
 }
 
+/* What the action affected: the account, or (domains, settings, exports) what changed.
+   Several setting changes arrive joined by "; " and are shown one per line. */
+function Affected({ entry }: { entry: AuditEntry }) {
+  if (entry.targetEmail) return <span className="ad-email">{entry.targetEmail}</span>;
+  const changes = entry.view?.changes ?? [];
+  if (entry.action === "update_settings" && changes.length) {
+    return <ul className="ad-audit-detail">{changes.map((c, i) => <li key={i}>{c.label}: {c.before} → {c.after}</li>)}</ul>;
+  }
+  if (!entry.details) return <span className="ap-muted">—</span>;
+  return <span className="ad-audit-detail">{entry.details}</span>;
+}
+
+function ReasonPreview({ reason }: { reason: string | null }) {
+  return reason ? <span className="ad-reason-preview" title={reason}>{reason}</span> : <span className="ad-no-reason">No reason given</span>;
+}
+
+/* Page numbers with ellipses: 1 … 4 5 6 … 12 */
+function pageItems(current: number, count: number): (number | "gap")[] {
+  if (count <= 7) return Array.from({ length: count }, (_, i) => i + 1);
+  const pages = new Set([1, count, current - 1, current, current + 1].filter(n => n >= 1 && n <= count));
+  const sorted = [...pages].sort((a, b) => a - b);
+  return sorted.flatMap((n, i) => (i > 0 && n - sorted[i - 1] > 1 ? ["gap" as const, n] : [n]));
+}
+
+function NumberedPager({ page, count, total, disabled, onPage }: { page: number; count: number; total: number; disabled: boolean; onPage: (page: number) => void }) {
+  const from = total ? (page - 1) * AUDIT_PAGE_SIZE + 1 : 0;
+  const to = Math.min(total, page * AUDIT_PAGE_SIZE);
+  return (
+    <nav className="ad-numpager" aria-label="Audit log pages">
+      <p className="ap-muted ad-sub" aria-live="polite">Showing {from}–{to} of {total.toLocaleString()}</p>
+      {count > 1 && <div className="ad-numpager-btns">
+        <button type="button" className="ap-page-btn" disabled={disabled || page <= 1} onClick={() => onPage(page - 1)}>‹ Previous</button>
+        <ol>
+          {pageItems(page, count).map((item, i) => item === "gap"
+            ? <li key={`gap${i}`} className="ad-gap" aria-hidden="true">…</li>
+            : <li key={item}>
+                <button type="button" className="ad-page-num" disabled={disabled} aria-current={item === page ? "page" : undefined}
+                  aria-label={`Page ${item}`} onClick={() => onPage(item)}>{item}</button>
+              </li>)}
+        </ol>
+        <button type="button" className="ap-page-btn" disabled={disabled || page >= count} onClick={() => onPage(page + 1)}>Next ›</button>
+      </div>}
+    </nav>
+  );
+}
+
+/* Details: a side panel on desktop, a bottom sheet on phones. Native <dialog> gives
+   focus trapping and Esc; clicking outside closes it; focus returns to the row. */
+function DetailPanel({ entry, onClose }: { entry: AuditEntry; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const closeBtn = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const dialog = ref.current!;
+    dialog.showModal();
+    closeBtn.current?.focus();
+    return () => { if (dialog.open) dialog.close(); };
+  }, []);
+  const view = entry.view ?? { fields: [], changes: [], note: entry.details ? null : "No additional details were recorded for this action." };
+  const longChange = (before: string, after: string) => before.length + after.length > 48;
+
+  return (
+    <dialog ref={ref} className="ad-drawer" aria-labelledby="audit-detail-title" onClose={onClose}
+      onClick={e => { if (e.target === ref.current) ref.current.close(); }}>
+      <div className="ad-drawer-body">
+        <header className="ad-drawer-head">
+          <div>
+            <p className="ad-drawer-kicker">Audit entry</p>
+            <h2 id="audit-detail-title" className="visually-hidden">{actionLabel(entry.action)}</h2>
+            <ActionPill action={entry.action} />
+          </div>
+          <button ref={closeBtn} type="button" className="ad-drawer-close" aria-label="Close details" onClick={() => ref.current?.close()}><IconClose /></button>
+        </header>
+
+        <dl className="ad-kv">
+          <div><dt>When</dt><dd>{fmt(entry.createdAt)} <span className="ap-muted">({ago(entry.createdAt).toLowerCase()})</span></dd></div>
+          <div><dt>By</dt><dd>{actorOf(entry)}</dd></div>
+        </dl>
+
+        <section className="ad-drawer-section" aria-labelledby="audit-what">
+          <h3 id="audit-what">What happened</h3>
+          {view.fields.length > 0 && (
+            <dl className="ad-kv">
+              {view.fields.map((f, i) => <div key={i}><dt>{f.label}</dt><dd className={f.mono ? "ad-mono" : undefined}>{f.value}</dd></div>)}
+            </dl>
+          )}
+          {view.changes.length > 0 && (
+            <ul className="ad-changes">
+              {view.changes.map((c, i) => (
+                <li key={i} className={longChange(c.before, c.after) ? "is-long" : undefined}>
+                  <span className="ad-change-label">{c.label}</span>
+                  {longChange(c.before, c.after) ? (
+                    <span className="ad-change-blocks">
+                      <span><span className="ad-change-tag">Before</span><span className="ad-change-text">{c.before}</span></span>
+                      <span><span className="ad-change-tag">After</span><span className="ad-change-text">{c.after}</span></span>
+                    </span>
+                  ) : (
+                    <span className="ad-change-inline"><span className="ad-change-from">{c.before}</span><span aria-label="changed to">→</span><strong>{c.after}</strong></span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {view.note && <p className="ad-drawer-note">{Icons.info()}<span>{view.note}</span></p>}
+        </section>
+
+        <section className="ad-drawer-section" aria-labelledby="audit-reason">
+          <h3 id="audit-reason">Reason</h3>
+          {entry.reason ? <p className="ad-reason-text">{entry.reason}</p> : <p className="ad-no-reason">No reason given</p>}
+        </section>
+
+        <details className="ad-more">
+          <summary>More details</summary>
+          <dl className="ad-kv ad-kv-small">
+            <div><dt>Log ID</dt><dd className="ad-mono">{String(entry.id)}</dd></div>
+            <div><dt>Action code</dt><dd className="ad-mono">{entry.action}</dd></div>
+            <div><dt>Recorded at</dt><dd className="ad-mono">{new Date(entry.createdAt).toISOString()}</dd></div>
+            {entry.details && <div><dt>Recorded details</dt><dd>{entry.details}</dd></div>}
+          </dl>
+        </details>
+      </div>
+    </dialog>
+  );
+}
+
 export function Audit() {
-  const [audit, setAudit] = useState<AuditEntry[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [params, setParams] = useSearchParams();
+  const requested = Number(params.get("page") ?? 1);
+  const page = Number.isSafeInteger(requested) && requested >= 1 ? requested : 1;
+  const [data, setData] = useState<AuditPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [open, setOpen] = useState<AuditEntry | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const tableTop = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false; setLoading(true); setError("");
-    listAudit(offset).then(result => { if (!cancelled) setAudit(result.audit); })
+    listAudit(page).then(result => { if (!cancelled) setData(result); })
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "Could not load the audit log."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [offset]);
+  }, [page]);
+
+  // The page lives in the URL (&page=2) so refresh and Back keep your place.
+  function goTo(next: number) {
+    setParams(prev => {
+      const updated = new URLSearchParams(prev);
+      if (next <= 1) updated.delete("page"); else updated.set("page", String(next));
+      return updated;
+    });
+    tableTop.current?.scrollIntoView({ block: "nearest" });
+  }
 
   async function exportCsv() {
     setExporting(true); setError("");
@@ -51,44 +189,73 @@ export function Audit() {
     finally { setExporting(false); }
   }
 
+  function show(entry: AuditEntry, el: HTMLElement) { opener.current = el; setOpen(entry); }
+  function closeDetails() {
+    setOpen(null);
+    // Return focus to the row that opened the panel.
+    window.setTimeout(() => opener.current?.focus(), 0);
+  }
+  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, entry: AuditEntry) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); show(entry, e.currentTarget); }
+  };
+
   const exportButton = (
     <button type="button" className="lp-btn lp-btn-secondary lp-btn-sm" disabled={exporting} aria-busy={exporting} onClick={() => void exportCsv()}>
       {exporting ? <span className="lp-spinner" aria-hidden="true" /> : Icons.download()}Export CSV
     </button>
   );
 
+  const audit = data?.audit ?? [];
+  const total = data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
+  let body: ReactNode;
+  if (loading) body = <Loading label="Loading audit log..." rows={6} />;
+  else if (!total) body = <Empty title="No admin actions yet.">Changes made in the admin console will appear here.</Empty>;
+  else if (!audit.length) body = (
+    <Empty title="This page is empty.">
+      There are only {pageCount} {pageCount === 1 ? "page" : "pages"} of entries.{" "}
+      <button type="button" className="ap-text-btn" onClick={() => goTo(1)}>Go to the first page</button>
+    </Empty>
+  );
+  else body = <>
+    <div className="ad-table-wrap">
+      <table className="ad-table ad-audit-table">
+        <thead><tr><th scope="col">Time</th><th scope="col">Action</th><th scope="col">Affected</th><th scope="col">By</th><th scope="col">Reason</th></tr></thead>
+        <tbody>{audit.map(entry => (
+          <tr key={String(entry.id)} className="ad-row-click" tabIndex={0} aria-haspopup="dialog"
+            aria-label={`${actionLabel(entry.action)}, ${ago(entry.createdAt)}. Open details`}
+            onClick={e => show(entry, e.currentTarget)} onKeyDown={e => onRowKey(e, entry)}>
+            <td><div title={fmt(entry.createdAt)}>{ago(entry.createdAt)}</div><div className="ap-muted ad-sub">{fmt(entry.createdAt)}</div></td>
+            <td><ActionPill action={entry.action} /></td>
+            <td><Affected entry={entry} /></td>
+            <td className="ap-muted">{actorOf(entry)}</td>
+            <td><span className="ad-reason-cell"><ReasonPreview reason={entry.reason} /><span className="ad-row-chevron" aria-hidden="true"><IconChevron /></span></span></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </div>
+    <ol className="ad-cards ad-timeline">
+      {audit.map(entry => (
+        <li key={String(entry.id)}>
+          <button type="button" className="ad-card ad-card-btn" aria-haspopup="dialog" onClick={e => show(entry, e.currentTarget)}>
+            <span className="ad-card-top"><ActionPill action={entry.action} /><span className="ap-muted ad-sub">{ago(entry.createdAt)}</span></span>
+            <Affected entry={entry} />
+            <span className="ap-muted ad-sub">By {actorOf(entry)}</span>
+            <span className="ad-reason-cell"><ReasonPreview reason={entry.reason} /><span className="ad-row-chevron" aria-hidden="true"><IconChevron /></span></span>
+          </button>
+        </li>
+      ))}
+    </ol>
+  </>;
+
   return (
-    <Section title="Audit log" description="Every admin action is recorded here." actions={exportButton}>
+    <Section title="Audit log" description="Every admin action is recorded here. Select an entry to see its details." actions={exportButton}>
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="ap-card ad-table-card">
-        {loading ? <Loading label="Loading audit log..." /> : !audit.length ? <Empty title="No admin actions yet." /> : <>
-          <div className="ad-table-wrap">
-            <table className="ad-table">
-              <thead><tr><th scope="col">Time</th><th scope="col">Action</th><th scope="col">Affected</th><th scope="col">By</th><th scope="col">Reason</th></tr></thead>
-              <tbody>{audit.map(entry => (
-                <tr key={entry.id}>
-                  <td><div title={fmt(entry.createdAt)}>{ago(entry.createdAt)}</div><div className="ap-muted ad-sub">{fmt(entry.createdAt)}</div></td>
-                  <td><ActionPill action={entry.action} /></td>
-                  <td><Affected entry={entry} /></td>
-                  <td className="ap-muted">{entry.actorEmail}</td>
-                  <td>{entry.reason ?? <span className="ap-muted">—</span>}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-          <ol className="ad-cards ad-timeline">
-            {audit.map(entry => (
-              <li key={entry.id} className="ad-card">
-                <div className="ad-card-top"><ActionPill action={entry.action} /><span className="ap-muted ad-sub" title={fmt(entry.createdAt)}>{ago(entry.createdAt)}</span></div>
-                <Affected entry={entry} />
-                <div className="ap-muted ad-sub">By {entry.actorEmail}</div>
-                {entry.reason && <div className="ad-reason-full">Reason: {entry.reason}</div>}
-              </li>
-            ))}
-          </ol>
-        </>}
-        <Pager offset={offset} count={audit.length} disabled={loading} onPage={setOffset} label="Audit log pages" />
+      <div className="ap-card ad-table-card" ref={tableTop} aria-busy={loading}>
+        {body}
+        {!loading && total > 0 && <NumberedPager page={page} count={pageCount} total={total} disabled={loading} onPage={goTo} />}
       </div>
+      {open && <DetailPanel entry={open} onClose={closeDetails} />}
     </Section>
   );
 }

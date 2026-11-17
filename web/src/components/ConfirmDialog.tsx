@@ -15,12 +15,18 @@ interface Props {
   mode?: "confirm" | "error";
   password?: boolean;
   reason?: boolean;
+  /** When false, the reason field is shown but may be left empty. */
+  reasonRequired?: boolean;
+  /** Helper text under the reason field. */
+  reasonHint?: string;
   error?: string | null;
   onConfirm: (values: ConfirmValues) => void;
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ title, message, confirmLabel, busyLabel, busy, danger = false, mode = "confirm", password = false, reason = false, error = null, onConfirm, onCancel }: Props) {
+const REASON_MAX = 500;
+
+export function ConfirmDialog({ title, message, confirmLabel, busyLabel, busy, danger = false, mode = "confirm", password = false, reason = false, reasonRequired = true, reasonHint = "Shown to the user when they try to log in.", error = null, onConfirm, onCancel }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const confirm = useRef<HTMLButtonElement>(null);
@@ -36,7 +42,7 @@ export function ConfirmDialog({ title, message, confirmLabel, busyLabel, busy, d
     return () => element.close();
   }, []);
 
-  const missingFields = (password && !passwordValue) || (reason && !reasonValue.trim());
+  const missingFields = (password && !passwordValue) || (reason && reasonRequired && !reasonValue.trim());
 
   return <dialog ref={dialog} className="confirm-dialog" aria-labelledby={titleId} aria-describedby={messageId} aria-busy={busy}
     onCancel={event => { event.preventDefault(); if (!busy) onCancel(); }}>
@@ -48,11 +54,16 @@ export function ConfirmDialog({ title, message, confirmLabel, busyLabel, busy, d
     <h2 id={titleId}>{title}</h2>
     <p id={messageId}>{message}</p>
     {reason && <div className="dialog-field">
-      <label className="field-label" htmlFor="dialog-reason">Reason</label>
-      <input id="dialog-reason" type="text" maxLength={200} disabled={busy}
-        placeholder="e.g. spamming scans" value={reasonValue}
+      <label className="field-label" htmlFor="dialog-reason">
+        Reason{!reasonRequired && <span className="dialog-optional"> (optional)</span>}
+      </label>
+      <textarea id="dialog-reason" rows={3} maxLength={REASON_MAX} disabled={busy} required={reasonRequired}
+        placeholder="e.g. spamming scans" value={reasonValue} aria-describedby="dialog-reason-hint dialog-reason-count"
         onChange={event => setReasonValue(event.target.value)} />
-      <p className="hint">Shown to the user when they try to log in.</p>
+      <div className="dialog-reason-meta">
+        <p id="dialog-reason-hint" className="hint">{reasonHint}</p>
+        <p id="dialog-reason-count" className="hint dialog-count" aria-live="polite">{reasonValue.length}/{REASON_MAX}</p>
+      </div>
     </div>}
     {password && <div className="dialog-field">
       <label className="field-label" htmlFor="dialog-password">Your password</label>

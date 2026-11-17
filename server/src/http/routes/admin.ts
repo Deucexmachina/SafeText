@@ -39,6 +39,10 @@ async function recordAudit(db: Pick<PoolClient, 'query'>, actorId: string, actio
 }
 
 const LIST_LABELS: Record<string, string> = { block: 'Blocklist', allow: 'Allowlist' };
+const REASON_MAX = 500;
+const AUDIT_PAGE_SIZE = 15;
+const OPERATOR = 'Server operator (command line)';
+const sessionsEnded = (count: number) => `${count} ${count === 1 ? 'session' : 'sessions'} ended`;
 
 adminRouter.get('/users', async (req, res, next) => {
   try {
@@ -92,7 +96,7 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
       throw new HttpError(400, 'Invalid request', 'Send disabled, an optional reason, and your password.');
     }
     const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
-    if (reason.length > 200) throw new HttpError(400, 'Invalid request', 'Keep the reason under 200 characters.');
+    if (reason.length > REASON_MAX) throw new HttpError(400, 'Invalid request', `Keep the reason to ${REASON_MAX} characters or fewer.`);
     if (req.body.disabled && !reason) throw new HttpError(400, 'Reason required', 'Give a reason so the user understands why the account was disabled.');
     if (!UUID_RE.test(req.params.id)) throw new HttpError(404, 'Account not found', 'The account does not exist.');
     await confirmAdminPassword(req.user!.id, req.body.password);
@@ -107,9 +111,9 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
       await client.query('UPDATE users SET disabled = $2, disabled_reason = $3 WHERE id = $1',
         [req.params.id, req.body.disabled, req.body.disabled ? reason : null]);
       // Re-enabling never restores revoked sessions.
-      await client.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
+      const { rowCount: ended } = await client.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
       await recordAudit(client, req.user!.id, req.body.disabled ? 'disable_user' : 'enable_user',
-        { targetId: req.params.id, reason: reason || null });
+        { targetId: req.params.id, reason: reason || null, details: req.body.disabled ? sessionsEnded(ended ?? 0) : null });
       await client.query('COMMIT');
       res.json({ ok: true });
     } catch (err) { await client.query('ROLLBACK'); throw err; }
@@ -121,14 +125,19 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
 adminRouter.post('/users/:id/force-logout', async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) throw new HttpError(404, 'Account not found', 'The account does not exist.');
+    const rawReason: unknown = req.body?.reason;
+    if (rawReason !== undefined && typeof rawReason !== 'string') throw new HttpError(400, 'Invalid request', 'The reason must be text.');
+    const reason = (rawReason ?? '').trim();
+    if (reason.length > REASON_MAX) throw new HttpError(400, 'Invalid request', `Keep the reason to ${REASON_MAX} characters or fewer.`);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       const { rows } = await client.query('SELECT role FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
       if (!rows[0]) throw new HttpError(404, 'Account not found', 'The account does not exist.');
       if (rows[0].role === 'admin') throw new HttpError(403, 'Access denied', 'The administrator cannot be logged out here.');
-      await client.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
-      await recordAudit(client, req.user!.id, 'force_logout', { targetId: req.params.id });
+      const { rowCount: ended } = await client.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
+      await recordAudit(client, req.user!.id, 'force_logout',
+        { targetId: req.params.id, reason: reason || null, details: sessionsEnded(ended ?? 0) });
       await client.query('COMMIT');
       res.json({ ok: true });
     } catch (err) { await client.query('ROLLBACK'); throw err; }
@@ -137,20 +146,24 @@ adminRouter.post('/users/:id/force-logout', async (req, res, next) => {
 });
 
 interface AuditRow {
-  id: number; actorEmail: string; targetEmail: string | null;
+  id: number; actorEmail: string | null; targetEmail: string | null;
   action: string; reason: string | null; details: string | null; createdAt: Date;
 }
 
+// Audit entries hold only admin metadata (emails, domains, setting values, reasons).
+// Message text, scan history, passwords, codes, tokens and keys are never stored here.
 async function auditRows(limit: number, offset: number): Promise<AuditRow[]> {
   const { rows } = await pool.query<AuditRow>(
     `SELECT aa.id, actor.email AS "actorEmail", target.email AS "targetEmail",
        aa.action, aa.reason, aa.details, aa.created_at AS "createdAt"
      FROM admin_audit aa
-     JOIN users actor ON actor.id = aa.actor_id
+     LEFT JOIN users actor ON actor.id = aa.actor_id
      LEFT JOIN users target ON target.id = aa.target_id
      ORDER BY aa.created_at DESC, aa.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
   return rows;
 }
+
+const auditTotal = async () => (await pool.query<{ total: number }>('SELECT count(*)::int AS total FROM admin_audit')).rows[0].total;
 
 // Aggregate dashboard numbers only — no message content ever leaves the API.
 adminRouter.get('/overview', async (_req, res, next) => {
@@ -215,15 +228,27 @@ adminRouter.get('/audit', async (req, res, next) => {
         return `"${(/^[=+\-@]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`;
       };
       const lines = ['time,actor,target,action,reason,details',
-        ...rows.map(r => [r.createdAt.toISOString(), r.actorEmail, r.targetEmail ?? '', r.action, r.reason ?? '', r.details ?? ''].map(csvCell).join(','))];
+        ...rows.map(r => [r.createdAt.toISOString(), r.actorEmail ?? OPERATOR, r.targetEmail ?? '', r.action, r.reason ?? '', r.details ?? ''].map(csvCell).join(','))];
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="safetext-audit.csv"');
       // BOM lets Excel open the UTF-8 CSV with correct encoding.
       res.send(String.fromCharCode(0xfeff) + `${lines.join('\r\n')}\r\n`);
       return;
     }
-    const { limit, offset } = pagination(req.query);
-    res.json({ audit: await auditRows(limit, offset) });
+    let limit: number, offset: number, page: number | undefined;
+    if (req.query.page !== undefined || req.query.pageSize !== undefined) {
+      page = Number(req.query.page ?? 1);
+      const pageSize = Number(req.query.pageSize ?? AUDIT_PAGE_SIZE);
+      if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+        throw new HttpError(400, 'Invalid pagination', 'Use a page of 1 or more and a pageSize from 1 to 100.');
+      }
+      limit = pageSize; offset = (page - 1) * pageSize;
+    } else ({ limit, offset } = pagination(req.query));
+    const [rows, total] = await Promise.all([auditRows(limit, offset), auditTotal()]);
+    res.json({
+      audit: rows.map(row => ({ ...row, actorEmail: row.actorEmail, view: describeAudit(row) })),
+      total, page: page ?? Math.floor(offset / limit) + 1, pageSize: limit,
+    });
   } catch (err) { next(err); }
 });
 
@@ -356,11 +381,93 @@ function settingChanges(before: RuntimeSettings, after: RuntimeSettings): string
     if (key === 'maintenance') return value ? 'on' : 'off';
     if (key === 'announcement') {
       const text = String(value);
-      return text ? `"${text.length > 80 ? `${text.slice(0, 80)}…` : text}"` : '(none)';
+      return text ? `"${text}"` : '(none)';
     }
     return String(value);
   };
   return (Object.keys(SETTING_LABELS) as (keyof RuntimeSettings)[])
     .filter(key => before[key] !== after[key])
     .map(key => `${SETTING_LABELS[key]}: ${show(key, before[key])} → ${show(key, after[key])}`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Friendly, per-action view of an audit entry for the details panel. */
+/* Built only from the audit row itself (no scans, messages or secrets). */
+/* ------------------------------------------------------------------ */
+
+export interface AuditView {
+  fields: { label: string; value: string; mono?: boolean }[];
+  changes: { label: string; before: string; after: string }[];
+  note: string | null;
+}
+
+const LIST_OUTCOME: Record<string, string> = {
+  Blocklist: 'Links to this domain (and its subdomains) are now always flagged.',
+  Allowlist: 'Links to this domain (and its subdomains) are now never flagged.',
+};
+const NO_DETAILS = 'No additional details were recorded for this action.';
+const SETTING_LABEL_PATTERN = Object.values(SETTING_LABELS).map(l => l.replace(/[()]/g, '\\$&')).join('|');
+const unquote = (value: string) => (value === '(none)' ? 'None' : value.replace(/^"([\s\S]*)"$/, '$1'));
+
+export function describeAudit(row: Pick<AuditRow, 'action' | 'targetEmail' | 'details'>): AuditView {
+  const view: AuditView = { fields: [], changes: [], note: null };
+  const details = row.details ?? '';
+  const account = () => view.fields.push({ label: 'Account', value: row.targetEmail ?? 'Account no longer exists' });
+  const sessions = () => {
+    const match = /^(\d+) sessions? ended$/.exec(details);
+    if (match) view.fields.push({ label: 'Sessions ended', value: match[1] });
+    return !!match;
+  };
+  let match: RegExpExecArray | null;
+  switch (row.action) {
+    case 'disable_user':
+      account(); view.changes.push({ label: 'Status', before: 'Active', after: 'Disabled' }); sessions();
+      break;
+    case 'enable_user':
+      account(); view.changes.push({ label: 'Status', before: 'Disabled', after: 'Active' });
+      break;
+    case 'force_logout':
+      account();
+      if (!sessions()) view.note = 'The number of sessions ended was not recorded for this entry.';
+      break;
+    case 'grant_admin':
+      account(); view.changes.push({ label: 'Role', before: 'User', after: 'Admin' });
+      view.note = 'Granted from the server command line, not from the admin console.';
+      break;
+    case 'add_domain':
+      if ((match = /^(.+) → (Blocklist|Allowlist)$/.exec(details))) {
+        view.fields.push({ label: 'Domain', value: match[1], mono: true }, { label: 'Added to', value: match[2] });
+        view.note = LIST_OUTCOME[match[2]];
+      }
+      break;
+    case 'move_domain':
+      if ((match = /^(.+): (Blocklist|Allowlist) → (Blocklist|Allowlist)$/.exec(details))) {
+        view.fields.push({ label: 'Domain', value: match[1], mono: true });
+        view.changes.push({ label: 'List', before: match[2], after: match[3] });
+        view.note = LIST_OUTCOME[match[3]];
+      }
+      break;
+    case 'remove_domain':
+      if ((match = /^(.+) \(was on the (Blocklist|Allowlist)\)$/.exec(details))) {
+        view.fields.push({ label: 'Domain', value: match[1], mono: true }, { label: 'Removed from', value: match[2] });
+        view.note = 'This domain is no longer on any list.';
+      }
+      break;
+    case 'update_settings':
+      // Stored as "Label: before → after" joined by "; " (split only before a known label).
+      for (const part of details.split(new RegExp(`; (?=(?:${SETTING_LABEL_PATTERN}): )`))) {
+        const change = /^([^:]+): ((?:\(none\)|"[\s\S]*?"|[^→]*?)) → ([\s\S]*)$/.exec(part);
+        if (change) view.changes.push({ label: change[1], before: unquote(change[2].trim()), after: unquote(change[3].trim()) });
+      }
+      break;
+    case 'export_audit':
+      if ((match = /^(\d+) entr(?:y|ies)$/.exec(details))) {
+        view.fields.push({ label: 'Entries exported', value: match[1] }, { label: 'Format', value: 'CSV file' });
+      }
+      break;
+  }
+  // Anything recorded but not understood above is still shown as plain text.
+  if (!view.fields.length && !view.changes.length && details) view.fields.push({ label: 'Details', value: details });
+  if (!view.fields.length && !view.changes.length && !view.note) view.note = NO_DETAILS;
+  return view;
 }

@@ -9,9 +9,14 @@ try {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const { rows: [before] } = await client.query<{ role: string }>('SELECT role FROM users WHERE email = $1 FOR UPDATE', [email]);
     const { rows } = await client.query('UPDATE users SET role = \'admin\', disabled = false WHERE email = $1 RETURNING id', [email]);
     if (!rows[0]) throw new Error('Account not found. Register the intended admin account first.');
     await client.query('DELETE FROM sessions WHERE user_id = $1', [rows[0].id]);
+    // Role changes are audited. There is no admin actor: this runs from the server command line.
+    if (before?.role !== 'admin') {
+      await client.query("INSERT INTO admin_audit(actor_id, target_id, action, details) VALUES(NULL, $1, 'grant_admin', 'Granted from the server command line')", [rows[0].id]);
+    }
     await client.query('COMMIT');
     console.log('Admin access granted. Log in again to use the Admin tab.');
   } catch (err) {
