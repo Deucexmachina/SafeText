@@ -149,9 +149,6 @@ export function Accounts() {
 
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {notice && <p className="ap-alert ap-alert-info" role="status">{Icons.check()}<span>{notice}</span></p>}
-      <p className="ap-muted">Rate hits are accumulated blocks across scans, login, password reset, and API requests.
-        Login/reset hits can come from someone targeting the email address; they are not proof of abuse by its owner.</p>
-
       <div className="ap-card ad-table-card">
         {loading ? <Loading label="Loading accounts..." /> : !users.length ? (
           <Empty title={filtered ? "No accounts match" : "No accounts yet"}>{filtered ? "Try a different email, status or date range." : undefined}</Empty>
