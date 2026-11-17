@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { svgIcon, type TextSize, type Theme } from "./SiteNav";
+import { svgIcon, TEXT_MAX, TEXT_MIN, type TextSize, type Theme } from "./SiteNav";
 
 const IconScan = () => svgIcon(22, <><path d="M5 4h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-7l-5 4v-4H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" /><path d="m8.8 10.2 2.2 2.2 4.3-4.4" /></>);
 const IconHistory = () => svgIcon(22, <><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" /><path d="M3.5 4v4h4" /><path d="M12 8v4.5l3 2" /></>);
@@ -25,14 +25,14 @@ function tabsFor(isAdmin: boolean): Tab[] {
 
 const tabClass = (base: string) => ({ isActive }: { isActive: boolean }) => (isActive ? `${base} is-active` : base);
 
-export function AppNav({ email, isAdmin, theme, onToggleTheme, showThemeToggle, textSize, onToggleTextSize, onSignOut }: {
+export function AppNav({ email, isAdmin, theme, onToggleTheme, showThemeToggle, textSize, onTextSize, onSignOut }: {
   email: string;
   isAdmin: boolean;
   theme: Theme;
   onToggleTheme: () => void;
   showThemeToggle: boolean;
   textSize: TextSize;
-  onToggleTextSize: () => void;
+  onTextSize: (size: number) => void;
   onSignOut: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -77,10 +77,16 @@ export function AppNav({ email, isAdmin, theme, onToggleTheme, showThemeToggle, 
               <Link to="/account" className="ap-menu-item" onClick={() => setOpen(false)}>
                 <IconUser /><span>Account</span>
               </Link>
-              <button type="button" className="ap-menu-item" aria-pressed={textSize === "large"} onClick={onToggleTextSize}>
-                <IconTextSize /><span>Large text</span>
-                <span className="ap-switch" aria-hidden="true" />
-              </button>
+              <div className="ap-menu-item ap-menu-slider">
+                <IconTextSize /><span>Text size</span>
+                <label className="ap-slider-wrap">
+                  <span className="visually-hidden">Text size</span>
+                  <input type="range" min={TEXT_MIN} max={TEXT_MAX} step={10} value={textSize}
+                    aria-valuetext={`${textSize} percent`}
+                    onChange={e => onTextSize(Number(e.target.value))} />
+                </label>
+                <span className="ap-slider-val" aria-hidden="true">{textSize}%</span>
+              </div>
               {showThemeToggle && (
                 <button type="button" className="ap-menu-item" aria-pressed={theme === "dark"} onClick={onToggleTheme}>
                   {theme === "dark" ? <IconSun /> : <IconMoon />}<span>Dark mode</span>

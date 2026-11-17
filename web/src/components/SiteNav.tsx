@@ -20,21 +20,27 @@ export function useSiteTheme(): [Theme, () => void] {
   return [theme, () => setTheme(t => (t === "dark" ? "light" : "dark"))];
 }
 
-export type TextSize = "normal" | "large";
+export type TextSize = number; // zoom percentage, 100–150
 const TEXT_KEY = "safetext:text";
+export const TEXT_MIN = 100;
+export const TEXT_MAX = 150;
 
 function readTextSize(): TextSize {
-  try { return localStorage.getItem(TEXT_KEY) === "large" ? "large" : "normal"; }
-  catch { return "normal"; }
+  try {
+    const stored = localStorage.getItem(TEXT_KEY);
+    if (stored === "large") return 120; // migrate the old on/off preference
+    const value = Number(stored);
+    return Number.isFinite(value) ? Math.min(TEXT_MAX, Math.max(TEXT_MIN, Math.round(value))) : TEXT_MIN;
+  } catch { return TEXT_MIN; }
 }
 
-export function useTextSize(): [TextSize, () => void] {
+export function useTextSize(): [TextSize, (size: number) => void] {
   const [size, setSize] = useState<TextSize>(readTextSize);
   useEffect(() => {
-    document.documentElement.dataset.text = size;
-    try { localStorage.setItem(TEXT_KEY, size); } catch { /* storage unavailable */ }
+    document.documentElement.style.zoom = size === TEXT_MIN ? "" : `${size}%`;
+    try { localStorage.setItem(TEXT_KEY, String(size)); } catch { /* storage unavailable */ }
   }, [size]);
-  return [size, () => setSize(s => (s === "large" ? "normal" : "large"))];
+  return [size, setSize];
 }
 
 export const svgIcon = (size: number, children: ReactNode) => (

@@ -672,11 +672,34 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Accessibility: large text mode                                      */
+/* Accessibility: adjustable text size                                 */
 /* ------------------------------------------------------------------ */
 
-html[data-text="large"] {
-  zoom: 1.18;
+.ap-menu-slider {
+  cursor: default;
+}
+
+.ap-slider-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.ap-slider-wrap input[type="range"] {
+  width: 100%;
+  accent-color: var(--lp-btn-bg);
+  cursor: pointer;
+}
+
+.ap-slider-val {
+  flex: none;
+  width: 42px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lp-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ------------------------------------------------------------------ */
