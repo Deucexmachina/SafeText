@@ -93,7 +93,9 @@ function readLang(): Lang {
   try { return localStorage.getItem("safetext:lang") === "tl" ? "tl" : "en"; } catch { return "en"; }
 }
 
-export function ResultCard({ scan }: { scan: ScanResult }) {
+/** `preview` renders a static example (the landing page): no feedback buttons
+ *  or scan-ID footer, since those need a signed-in user, and at most 3 steps. */
+export function ResultCard({ scan, preview = false }: { scan: ScanResult; preview?: boolean }) {
   const a = scan.analysis;
   const verdict = a?.verdict ?? "INCONCLUSIVE";
   const kind: VerdictKind = verdictKind(verdict);
@@ -149,7 +151,8 @@ export function ResultCard({ scan }: { scan: ScanResult }) {
   const phones = unique(a?.entities.phoneNumbers ?? [], v => v.replace(/\D/g, "").replace(/^63/, "0"));
   const sender = a?.entities.senderId && !/^unknown$/i.test(a.entities.senderId.trim()) ? a.entities.senderId : null;
   const hasHighlights = scan.riskyParts.phrases.length > 0 || scan.riskyParts.links.length > 0;
-  const steps = t.steps[verdict] ?? [];
+  const allSteps = t.steps[verdict] ?? [];
+  const steps = preview ? allSteps.slice(0, 3) : allSteps;
 
   return (
     <section className={`sr-card sr-${kind}`} aria-labelledby="sr-verdict">
@@ -240,7 +243,7 @@ export function ResultCard({ scan }: { scan: ScanResult }) {
       )}
 
       {/* g. Feedback */}
-      {a && (reported ? (
+      {a && !preview && (reported ? (
         <p className="sr-feedback sr-thanks" role="status"><IconCheck />{reported === "yes" ? t.thanksConfirm : t.thanks}</p>
       ) : (
         <div className="sr-feedback">
@@ -253,13 +256,13 @@ export function ResultCard({ scan }: { scan: ScanResult }) {
       ))}
 
       {/* Footer */}
-      <footer className="sr-foot">
+      {!preview && <footer className="sr-foot">
         <span>Scan <code>{scan.scanId}</code> · {friendlyDate(scan.createdAt)}</span>
         <button type="button" className="sr-copy" onClick={() => void copyId()} aria-label={copied ? "Scan ID copied" : "Copy scan ID"}>
           {copied ? <IconCheck size={15} /> : <IconCopy />}<span>{copied ? "Copied" : "Copy ID"}</span>
         </button>
         <span className="visually-hidden" role="status">{copied ? "Scan ID copied" : ""}</span>
-      </footer>
+      </footer>}
 
       {reporting && (
         <ReportDialog

@@ -1,10 +1,29 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { User } from "../api";
+import type { ScanResult, User } from "../api";
 import { AuthPage } from "./AuthPage";
 import { Logo, SiteNav, useSiteTheme, type AuthMode } from "../components/SiteNav";
+import { ResultCard } from "../components/ResultCard";
 import "../landing.css";
 
+/* Example data for the hero card (rendered by the real ResultCard). */
+const EXAMPLE_SCAN: ScanResult = {
+  scanId: "example",
+  status: "COMPLETE",
+  progress: null,
+  error: null,
+  incomplete: [],
+  createdAt: new Date().toISOString(),
+  extraction: { text: "G-Cash: Your account will be SUSPENDED in 24 hrs. Verify now at gcash-verify.top" },
+  riskyParts: { phrases: ["SUSPENDED in 24 hrs", "Verify now"], links: ["gcash-verify.top"] },
+  analysis: {
+    verdict: "MALICIOUS",
+    confidence: 91,
+    reasons: ["Urgency + account-suspension threat", "Misspelled brand name"],
+    entities: { senderId: "GCASH-ALRT", urls: ["gcash-verify.top"], phoneNumbers: [] },
+  },
+  threatIntel: null,
+};
 /* ------------------------------------------------------------------ */
 /* Icons (decorative unless labelled; text always carries the meaning) */
 /* ------------------------------------------------------------------ */
@@ -135,28 +154,10 @@ export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => voi
               <p className="lp-fineprint">An awareness aid, not a guarantee. When in doubt, don't click.</p>
             </div>
 
-            <figure className="lp-result" aria-label="Example result for a fake GCash text">
+            {/* The same card signed-in users see, filled with example data. */}
+            <figure className="lp-example" aria-label="Example result for a fake GCash text">
               <figcaption className="lp-result-cap">Example result</figcaption>
-              <blockquote className="lp-sms">
-                <span className="lp-sms-from">GCASH-ALRT</span>
-                G-Cash: Your account will be SUSPENDED in 24 hrs. Verify now at gcash-verify.top
-              </blockquote>
-              <div className="lp-result-head">
-                <VerdictTag kind="malicious" label="Malicious" />
-                <span className="lp-score"><strong>91</strong>/100 confidence</span>
-              </div>
-              <div className="lp-meter" role="img" aria-label="Confidence 91 out of 100"><span style={{ width: "91%" }} /></div>
-              <h2 className="lp-result-h">Why</h2>
-              <ul className="lp-reasons">
-                <li>Urgency + account-suspension threat</li>
-                <li>Misspelled brand name</li>
-              </ul>
-              <h2 className="lp-result-h">Details found</h2>
-              <dl className="lp-details">
-                <div><dt>Sender ID</dt><dd><code>GCASH-ALRT</code></dd></div>
-                <div><dt>Link</dt><dd><code>gcash-verify.top</code></dd></div>
-                <div><dt>Phone numbers</dt><dd>None found</dd></div>
-              </dl>
+              <ResultCard scan={EXAMPLE_SCAN} preview />
             </figure>
           </div>
         </section>

@@ -338,7 +338,9 @@
 
 @media (min-width: 900px) {
   .lp-hero { padding-block: 64px 80px; }
-  .lp-hero-grid { grid-template-columns: 1.1fr 0.9fr; gap: 56px; }
+  /* Headline sits at the top beside the (tall) example card, not centred below the fold */
+  .lp-hero-grid { grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: start; }
+  .lp-hero-copy { padding-top: 48px; }
 }
 
 /* Mock result card */
@@ -354,6 +356,14 @@
   width: 100%;
   justify-self: center;
 }
+
+/* Hero example: the shared ResultCard (result.css) inside a captioned figure */
+.lp-example { position: relative; margin: 0; width: 100%; max-width: 500px; justify-self: center; }
+.lp-example .sr-card { padding: 20px; }
+/* A little tighter than the full result page so the hero stays compact */
+.lp-example .sr-section, .lp-example .sr-next { margin-top: 18px; }
+.lp-example .sr-confidence { margin-top: 14px; }
+.lp-example .lp-result-cap { z-index: 1; }
 
 .lp-result-cap {
   position: absolute;
@@ -751,7 +761,7 @@ body:has(.lp-dialog[open]) { overflow: hidden; }
 
 @media (prefers-reduced-motion: no-preference) {
   .lp-hero-copy { animation: lp-rise 0.5s ease-out both; }
-  .lp-result { animation: lp-rise 0.6s 0.12s ease-out both; }
+  .lp-result, .lp-example { animation: lp-rise 0.6s 0.12s ease-out both; }
   .lp-meter span { animation: lp-fill 0.9s 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
   .lp-dialog[open] .lp-dialog-body { animation: lp-pop 0.18s ease-out; }
 }
