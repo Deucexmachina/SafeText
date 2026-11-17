@@ -166,8 +166,20 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [verifyIn, setVerifyIn] = useState(0);
+  // Screen-reader-only note when a rate limit starts; the countdown button is the visible cue.
+  const [limitNote, setLimitNote] = useState("");
   const cardRef = useRef<HTMLDivElement>(null);
   const nav = useNavigate();
+
+  /* A rate-limit reply (429) shows only as the "Try again in Ns" countdown on the
+     button, not as a separate red message. Returns true when it was one. */
+  function rateLimited(err: unknown, startCountdown: (seconds: number) => void) {
+    if (!(err instanceof ApiError && err.status === 429)) return false;
+    const seconds = err.retryAfter ?? 60;
+    startCountdown(seconds);
+    setLimitNote(`Too many attempts. You can try again in ${seconds} seconds.`);
+    return true;
+  }
   const code = digits.join("");
 
   useEffect(() => {
@@ -195,7 +207,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
 
   async function requestCode(event?: FormEvent) {
     event?.preventDefault();
-    setError(""); setNotice("");
+    setError(""); setNotice(""); setLimitNote("");
     if (!email.trim()) { setError("Enter your account email."); return; }
     const resending = step !== "email";
     setBusy(true);
@@ -208,8 +220,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
       setResendIn(result.resendAfter ?? 60);
       if (resending) setNotice("If an account exists for this email, we've sent a new code. Only the newest code will work.");
     } catch (err) {
-      if (err instanceof ApiError && err.status === 429) setResendIn(err.retryAfter ?? 60);
-      setError(message(err));
+      if (!rateLimited(err, setResendIn)) setError(message(err));
     } finally {
       setBusy(false);
     }
@@ -217,7 +228,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
 
   async function verify(event: FormEvent) {
     event.preventDefault();
-    setError(""); setNotice("");
+    setError(""); setNotice(""); setLimitNote("");
     if (!/^\d{6}$/.test(code.trim())) { setError("Enter the 6-digit code."); return; }
     setBusy(true);
     try {
@@ -226,10 +237,11 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
       setPassword("");
       setConfirm("");
     } catch (err) {
-      if (err instanceof ApiError && err.status === 429) setVerifyIn(err.retryAfter ?? 60);
-      setError(message(err));
-      setDigits(emptyDigits());
-      window.setTimeout(() => cardRef.current?.querySelector<HTMLElement>("#code")?.focus(), 0);
+      if (!rateLimited(err, setVerifyIn)) {
+        setError(message(err));
+        setDigits(emptyDigits());
+        window.setTimeout(() => cardRef.current?.querySelector<HTMLElement>("#code")?.focus(), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -237,7 +249,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    setError(""); setNotice("");
+    setError(""); setNotice(""); setLimitNote("");
     if (password !== confirm) {
       setError("Passwords don't match.");
       return;
@@ -251,8 +263,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
       await resetPassword(email.trim(), code.trim(), password);
       setStep("done");
     } catch (err) {
-      if (err instanceof ApiError && err.status === 429) setVerifyIn(err.retryAfter ?? 60);
-      setError(message(err));
+      if (!rateLimited(err, setVerifyIn)) setError(message(err));
     } finally {
       setBusy(false);
     }
@@ -274,6 +285,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
 
       <main id="main-content" tabIndex={-1} className="rc-main">
         <div className="rc-card" ref={cardRef}>
+          <p className="visually-hidden" role="status" aria-live="polite">{limitNote}</p>
           <StepIndicator step={step} />
 
           <div key={step} className="rc-panel">
@@ -321,7 +333,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
                 </form>
                 <div className="rc-row rc-row-stack">
                   <p className="rc-row"><span>Didn't get it?</span> {resendButton("Resend code")}</p>
-                  <button type="button" className="rc-link" disabled={busy} onClick={() => { setStep("email"); setError(""); setNotice(""); setResendIn(0); setVerifyIn(0); }}>
+                  <button type="button" className="rc-link" disabled={busy} onClick={() => { setStep("email"); setError(""); setNotice(""); setLimitNote(""); setResendIn(0); setVerifyIn(0); }}>
                     Use a different email
                   </button>
                 </div>
