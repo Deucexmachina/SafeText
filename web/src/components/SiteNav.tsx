@@ -20,24 +20,24 @@ export function useSiteTheme(): [Theme, () => void] {
   return [theme, () => setTheme(t => (t === "dark" ? "light" : "dark"))];
 }
 
-export type TextSize = number; // zoom percentage, 100–150
+export type TextSize = number; // zoom percentage, one of TEXT_STEPS
 const TEXT_KEY = "safetext:text";
-export const TEXT_MIN = 100;
-export const TEXT_MAX = 150;
+export const TEXT_STEPS = [100, 125, 150] as const;
 
 function readTextSize(): TextSize {
   try {
     const stored = localStorage.getItem(TEXT_KEY);
-    if (stored === "large") return 120; // migrate the old on/off preference
-    const value = Number(stored);
-    return Number.isFinite(value) ? Math.min(TEXT_MAX, Math.max(TEXT_MIN, Math.round(value))) : TEXT_MIN;
-  } catch { return TEXT_MIN; }
+    const value = stored === "large" ? 125 : Number(stored); // migrate the old on/off preference
+    if (!Number.isFinite(value)) return TEXT_STEPS[0];
+    // Snap any stored/slider-era value to the nearest preset.
+    return [...TEXT_STEPS].reduce((best, step) => Math.abs(step - value) < Math.abs(best - value) ? step : best);
+  } catch { return TEXT_STEPS[0]; }
 }
 
 export function useTextSize(): [TextSize, (size: number) => void] {
   const [size, setSize] = useState<TextSize>(readTextSize);
   useEffect(() => {
-    document.documentElement.style.zoom = size === TEXT_MIN ? "" : `${size}%`;
+    document.documentElement.style.zoom = size === TEXT_STEPS[0] ? "" : `${size}%`;
     try { localStorage.setItem(TEXT_KEY, String(size)); } catch { /* storage unavailable */ }
   }, [size]);
   return [size, setSize];

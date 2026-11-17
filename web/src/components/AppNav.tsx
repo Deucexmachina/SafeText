@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { svgIcon, TEXT_MAX, TEXT_MIN, type TextSize, type Theme } from "./SiteNav";
+import { svgIcon, TEXT_STEPS, type TextSize, type Theme } from "./SiteNav";
 
 const IconScan = () => svgIcon(22, <><path d="M5 4h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-7l-5 4v-4H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" /><path d="m8.8 10.2 2.2 2.2 4.3-4.4" /></>);
 const IconHistory = () => svgIcon(22, <><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" /><path d="M3.5 4v4h4" /><path d="M12 8v4.5l3 2" /></>);
@@ -77,18 +77,16 @@ export function AppNav({ email, isAdmin, theme, onToggleTheme, showThemeToggle, 
               <Link to="/account" className="ap-menu-item" onClick={() => setOpen(false)}>
                 <IconUser /><span>Account</span>
               </Link>
-              {/* Inverse zoom keeps this control a constant size while the
-                  page scales behind it — otherwise the thumb oscillates
-                  under the cursor mid-drag on desktop. */}
-              <div className="ap-menu-item ap-menu-slider" style={{ zoom: `${TEXT_MIN / textSize}` }}>
+              <div className="ap-menu-item ap-menu-size">
                 <IconTextSize /><span>Text size</span>
-                <label className="ap-slider-wrap">
-                  <span className="visually-hidden">Text size</span>
-                  <input type="range" min={TEXT_MIN} max={TEXT_MAX} step={10} value={textSize}
-                    aria-valuetext={`${textSize} percent`}
-                    onChange={e => onTextSize(Number(e.target.value))} />
-                </label>
-                <span className="ap-slider-val" aria-hidden="true">{textSize}%</span>
+                <span className="ap-size-opts" role="group" aria-label="Text size">
+                  {TEXT_STEPS.map(v => (
+                    <button key={v} type="button"
+                      className={textSize === v ? "ap-size-opt is-active" : "ap-size-opt"}
+                      aria-pressed={textSize === v}
+                      onClick={() => onTextSize(v)}>{v}%</button>
+                  ))}
+                </span>
               </div>
               {showThemeToggle && (
                 <button type="button" className="ap-menu-item" aria-pressed={theme === "dark"} onClick={onToggleTheme}>

@@ -681,31 +681,36 @@ html {
   scrollbar-gutter: stable;
 }
 
-.ap-menu-slider {
+.ap-menu-size {
   cursor: default;
 }
 
-.ap-slider-wrap {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  min-width: 0;
+.ap-size-opts {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
 }
 
-.ap-slider-wrap input[type="range"] {
-  width: 100%;
-  accent-color: var(--lp-btn-bg);
-  cursor: pointer;
-}
-
-.ap-slider-val {
-  flex: none;
-  width: 42px;
-  text-align: right;
+.ap-size-opt {
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius-sm);
+  background: var(--lp-bg);
+  color: var(--lp-muted);
   font-size: 12px;
   font-weight: 600;
-  color: var(--lp-muted);
+  padding: 4px 8px;
   font-variant-numeric: tabular-nums;
+}
+
+.ap-size-opt:hover {
+  border-color: var(--lp-link);
+  color: var(--lp-link);
+}
+
+.ap-size-opt.is-active {
+  background: var(--lp-btn-bg);
+  border-color: var(--lp-btn-bg);
+  color: var(--lp-btn-fg);
 }
 
 /* ------------------------------------------------------------------ */
