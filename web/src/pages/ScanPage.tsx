@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, submitImage, submitText } from "../api";
 import { useScan } from "../useScan";
-import { ResultCard } from "../components/ResultCard";
+import { ResultCard, ResultStateCard } from "../components/ResultCard";
 import { svgIcon } from "../components/SiteNav";
 import { IMAGE_ACCEPT, IMAGE_HELP, validateScreenshot } from "../imageValidation";
 
@@ -29,7 +29,7 @@ function ScanProgress({ progress, inputType }: { progress?: string | null; input
   const statusText = progress === "EXTRACTING" ? "Reading screenshot text..." : progress === "ANALYZING" ? "Analyzing the SMS and checking links..." : "Your message is queued for checking...";
 
   return (
-    <section className="ap-card ap-progress" aria-labelledby="progress-title">
+    <section className="sr-card ap-progress" aria-labelledby="progress-title">
       <div className="ap-progress-head">
         <span className="ap-pulse" aria-hidden="true"><span className="lp-spinner" /></span>
         <div>
@@ -168,12 +168,10 @@ export function ScanPage() {
         </header>
         {running && <ScanProgress progress={scan?.progress} inputType={submittedType} />}
         {scanError && (
-          <section className="ap-card ap-state" role="alert">
-            <span className="ap-state-icon ap-state-error"><IconAlert /></span>
-            <h2>We couldn't load the result</h2>
-            <p className="ap-muted">{scanError}</p>
-            <p className="ap-muted">Your scan may still finish. Check your history in a moment, or try again.</p>
-          </section>
+          <ResultStateCard tone="error" icon={<IconAlert />} title="We couldn't load the result">
+            <p>{scanError}</p>
+            <p>Your scan may still finish. Check your history in a moment, or try again.</p>
+          </ResultStateCard>
         )}
         {scan && scan.status !== "RUNNING" && <ResultCard scan={scan} />}
         {!running && actions}
