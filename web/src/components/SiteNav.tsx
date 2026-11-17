@@ -20,6 +20,23 @@ export function useSiteTheme(): [Theme, () => void] {
   return [theme, () => setTheme(t => (t === "dark" ? "light" : "dark"))];
 }
 
+export type TextSize = "normal" | "large";
+const TEXT_KEY = "safetext:text";
+
+function readTextSize(): TextSize {
+  try { return localStorage.getItem(TEXT_KEY) === "large" ? "large" : "normal"; }
+  catch { return "normal"; }
+}
+
+export function useTextSize(): [TextSize, () => void] {
+  const [size, setSize] = useState<TextSize>(readTextSize);
+  useEffect(() => {
+    document.documentElement.dataset.text = size;
+    try { localStorage.setItem(TEXT_KEY, size); } catch { /* storage unavailable */ }
+  }, [size]);
+  return [size, () => setSize(s => (s === "large" ? "normal" : "large"))];
+}
+
 export const svgIcon = (size: number, children: ReactNode) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{children}</svg>
 );

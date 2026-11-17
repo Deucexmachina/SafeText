@@ -670,3 +670,66 @@
   0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--lp-btn-bg) 18%, transparent); }
   50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--lp-btn-bg) 6%, transparent); }
 }
+
+/* ------------------------------------------------------------------ */
+/* Accessibility: large text mode                                      */
+/* ------------------------------------------------------------------ */
+
+html[data-text="large"] {
+  zoom: 1.18;
+}
+
+/* ------------------------------------------------------------------ */
+/* Account page                                                        */
+/* ------------------------------------------------------------------ */
+
+.ap-account .ap-card { margin-bottom: 18px; }
+.ap-account .ap-label { display: block; margin-bottom: 14px; }
+.ap-account form { max-width: 420px; }
+.ap-account .password-field { margin-bottom: 14px; }
+.ap-account .password-field input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 48px 10px 12px;
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius-sm);
+  background: var(--lp-bg);
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 16px; /* stops iOS zoom on focus */
+  appearance: none;
+}
+.ap-account .password-field input:focus {
+  outline: none;
+  border-color: var(--lp-link);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-link) 28%, transparent);
+}
+.ap-account .field-label { display: block; margin-bottom: 6px; font-size: 14px; color: var(--lp-heading); }
+.ap-account .password-toggle { color: var(--lp-muted); width: 44px; }
+.ap-account .ap-alert { margin: 10px 0; }
+.ap-account .lp-btn { margin-top: 4px; }
+
+.ap-sessions { list-style: none; margin: 12px 0 0; padding: 0; }
+.ap-session {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--lp-border);
+}
+.ap-session-icon { color: var(--lp-muted); flex: none; }
+.ap-session-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ap-session-info strong { font-size: 15px; color: var(--lp-heading); }
+.ap-session-btn { flex: none; }
+.ap-badge-current {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--lp-link);
+  background: var(--lp-chip);
+  border-radius: 999px;
+  padding: 4px 10px;
+}

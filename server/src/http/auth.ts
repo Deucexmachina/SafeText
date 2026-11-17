@@ -151,8 +151,8 @@ for (const action of ["register", "login"] as const) {
       await client.query("DELETE FROM sessions WHERE token_hash = $1 OR expires_at <= now()", [tokenHash(req)]);
       await client.query(`DELETE FROM sessions WHERE token_hash IN (
         SELECT token_hash FROM sessions WHERE user_id = $1 ORDER BY expires_at DESC, token_hash DESC OFFSET 4)`, [user.id]);
-      await client.query("INSERT INTO sessions(token_hash, user_id, expires_at) VALUES($1, $2, $3)",
-        [createHash("sha256").update(token).digest("hex"), user.id, new Date(Date.now() + lifetime)]);
+      await client.query("INSERT INTO sessions(token_hash, user_id, expires_at, user_agent) VALUES($1, $2, $3, $4)",
+        [createHash("sha256").update(token).digest("hex"), user.id, new Date(Date.now() + lifetime), req.get("user-agent")?.slice(0, 300) ?? null]);
       await client.query('COMMIT');
       } catch (err) { await client.query('ROLLBACK'); throw err; }
       finally { client.release(); }
@@ -340,6 +340,64 @@ authRouter.post("/logout", async (req, res, next) => {
     if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
     await pool.query("DELETE FROM sessions WHERE token_hash = $1", [tokenHash(req)]);
     res.clearCookie(cookieName, cookieOptions);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// Rough browser/OS label for the signed-in devices list; raw agents are not exposed.
+function describeAgent(ua: string | null): string {
+  if (!ua) return "Unknown device";
+  const os = /Windows NT/.test(ua) ? "Windows"
+    : /Mac OS X|Macintosh/.test(ua) ? "macOS"
+    : /Android/.test(ua) ? "Android"
+    : /iPhone|iPad|iPod/.test(ua) ? "iOS"
+    : /Linux/.test(ua) ? "Linux" : "another OS";
+  const browser = /Edg\//.test(ua) ? "Edge"
+    : /OPR\/|Opera/.test(ua) ? "Opera"
+    : /Chrome\//.test(ua) ? "Chrome"
+    : /Firefox\//.test(ua) ? "Firefox"
+    : /Version\/[\d.]+.*Safari\//.test(ua) ? "Safari" : "a browser";
+  return `${browser} on ${os}`;
+}
+
+authRouter.get("/sessions", requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query<{ token_hash: string; created_at: Date; user_agent: string | null }>(
+      "SELECT token_hash, created_at, user_agent FROM sessions WHERE user_id = $1 AND expires_at > now() ORDER BY created_at DESC, token_hash",
+      [req.user!.id]);
+    const current = tokenHash(req);
+    res.json({ sessions: rows.map(r => ({
+      id: r.token_hash.slice(0, 12),
+      device: describeAgent(r.user_agent),
+      signedInAt: r.created_at?.toISOString() ?? null,
+      current: r.token_hash === current,
+    })) });
+  } catch (err) { next(err); }
+});
+
+authRouter.delete("/sessions/:id", requireAuth, async (req, res, next) => {
+  try {
+    const { rowCount } = await pool.query(
+      "DELETE FROM sessions WHERE user_id = $1 AND starts_with(token_hash, $2)", [req.user!.id, req.params.id]);
+    if (!rowCount) throw new HttpError(404, "Session not found", "That device is no longer signed in.");
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+authRouter.post("/change-password", requireAuth, async (req, res, next) => {
+  try {
+    if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
+    const { currentPassword, password } = req.body ?? {};
+    if (typeof currentPassword !== "string" || !currentPassword ||
+        typeof password !== "string" || password.length < 12 || password.length > 128) {
+      throw new HttpError(400, "Invalid request", "Enter your current password and a new password of 12 to 128 characters.");
+    }
+    const { rows: [row] } = await pool.query<{ password_hash: string }>(
+      "SELECT password_hash FROM users WHERE id = $1", [req.user!.id]);
+    if (!row || !(await verifyPassword(currentPassword, row.password_hash))) {
+      throw new HttpError(401, "Wrong password", "Your current password is incorrect.");
+    }
+    await pool.query("UPDATE users SET password_hash = $2 WHERE id = $1", [req.user!.id, await hashPassword(password)]);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

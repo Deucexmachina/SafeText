@@ -200,6 +200,16 @@ export function logout() {
     method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
   });
 }
+export interface SessionInfo { id: string; device: string; signedInAt: string | null; current: boolean }
+export function listSessions() { return request<{ sessions: SessionInfo[] }>("/api/v1/auth/sessions"); }
+export function revokeSession(id: string) {
+  return request<{ ok: boolean }>(`/api/v1/auth/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+export function changePassword(currentPassword: string, password: string) {
+  return request<{ ok: boolean }>("/api/v1/auth/change-password", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, password }),
+  });
+}
 export function forgotPassword(email: string) {
   return request<{ ok: boolean }>("/api/v1/auth/forgot-password", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
