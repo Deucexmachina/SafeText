@@ -7,9 +7,10 @@ import { ApiError, currentUser, getStatus, logout, type AppStatus, type User } f
 import { AuthPage } from "./pages/AuthPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { AdminPage } from "./pages/AdminPage";
+import { AccountPage } from "./pages/AccountPage";
 import { LandingPage } from "./pages/LandingPage";
 import { AppNav } from "./components/AppNav";
-import { useSiteTheme } from "./components/SiteNav";
+import { useSiteTheme, useTextSize } from "./components/SiteNav";
 import "./landing.css";
 import "./app.css";
 
@@ -54,6 +55,7 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [theme, toggleTheme] = useSiteTheme();
+  const [textSize, setTextSize] = useTextSize();
 
   // When the server ends the session (an admin forced a logout, the account was
   // disabled, or it expired), send the person to the landing page with the login
@@ -113,12 +115,13 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
     return <div className="lp ap" data-theme={theme}>
       <a className="lp-skip" href="#main-content">Skip to content</a>
       <AppNav key={user.id} email={user.email} isAdmin={user.role === "admin"} theme={theme} onToggleTheme={toggleTheme}
-        showThemeToggle onSignOut={signOutToLanding} />
+        showThemeToggle textSize={textSize} onTextSize={setTextSize} onSignOut={signOutToLanding} />
       <main id="main-content" tabIndex={-1} className={adminRoute ? "ap-main ap-main-admin" : "ap-main"}>
         {(status?.maintenance || status?.announcement || error) && <div className="ap-notices">{notices}</div>}
         <Routes key={user.id}>
           <Route path="/" element={<ScanPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/scan/:id" element={<ScanDetailPage />} />
           <Route path="/forgot-password" element={<Navigate to="/" replace />} />
           <Route path="/admin" element={user.role === 'admin' ? <AdminPage /> : <Navigate to="/" replace />} />

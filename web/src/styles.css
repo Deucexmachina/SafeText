@@ -1313,3 +1313,72 @@ textarea:disabled {
   align-self: flex-start;
   padding: 8px 18px;
 }
+
+/* ------------------------------------------------------------------ */
+/* Result card: risk highlights, language toggle, next steps           */
+/* ------------------------------------------------------------------ */
+
+.checked-msg mark {
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+mark.risky {
+  background: #fde8d8;
+  color: #b3540e;
+}
+
+mark.risky-link {
+  background: #fbe1e1;
+  color: var(--bad);
+  text-decoration: underline;
+  text-decoration-color: #e0a8a8;
+}
+
+.result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.result-head .verdict {
+  margin-bottom: 0;
+}
+
+.lang-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.lang-toggle button {
+  border: 0;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+}
+
+.lang-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.next-steps li::marker {
+  color: var(--accent);
+}
+
+.verdict-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  flex-wrap: wrap;
+}

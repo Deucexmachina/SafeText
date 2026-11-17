@@ -13,6 +13,7 @@ import type { PoolClient } from 'pg';
 import { HttpError } from '../http/problem.js';
 import { reserveScanStorage, scanAdmissionLock } from './retention.js';
 import { OCR_TEXT_VERSION } from '../providers/ocr/prepareText.js';
+import { findRiskyParts } from '../domain/riskPhrases.js';
 
 // Browser results/history never need screenshot bytes. Avoid transferring queued images from Neon.
 const publicColumns = `id, state, input_type, input_text, image_hash, image_mime, NULL::bytea AS image_bytes,
@@ -231,6 +232,7 @@ const PUBLIC_STATUS: Record<JobState, ScanStatus> = {
 
 export function toDto(row: ScanRow): ScanResultDto {
   const legacyImage = row.input_type === 'image' && !!row.extracted_text && row.extraction_source !== 'llmwhisperer_v2';
+  const text = row.extracted_text ?? (row.input_type === 'text' ? row.input_text : null);
   return {
     scanId: row.id,
     progress: ["QUEUED", "EXTRACTING", "ANALYZING"].includes(row.state) ? row.state as "QUEUED" | "EXTRACTING" | "ANALYZING" : null,
@@ -238,6 +240,7 @@ export function toDto(row: ScanRow): ScanResultDto {
     status: legacyImage ? 'INCONCLUSIVE' : PUBLIC_STATUS[row.state],
     extraction: !legacyImage && row.extracted_text ? { text: row.extracted_text,
       ...(row.extraction_note ? { note: row.extraction_note } : {}) } : null,
+    riskyParts: legacyImage || !text ? { phrases: [], links: [] } : findRiskyParts(text),
     analysis: legacyImage ? null : row.analysis,
     threatIntel: legacyImage ? null : row.threat_intel,
     incomplete: legacyImage ? ['extraction', 'analysis', 'threat_intel'] : row.incomplete ?? [],

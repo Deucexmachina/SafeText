@@ -25,6 +25,7 @@ export interface ScanResult {
   scanId: string;
   status: ScanStatus;
   extraction: { text: string; note?: string } | null;
+  riskyParts: { phrases: string[]; links: string[] };
   analysis: Analysis | null;
   threatIntel: { urls: ThreatUrl[] } | null;
   incomplete: string[];
@@ -209,6 +210,16 @@ export function authenticate(action: "login" | "register", email: string, passwo
 export function logout() {
   return request<{ ok: boolean }>("/api/v1/auth/logout", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  });
+}
+export interface SessionInfo { id: string; device: string; signedInAt: string | null; current: boolean }
+export function listSessions() { return request<{ sessions: SessionInfo[] }>("/api/v1/auth/sessions"); }
+export function revokeSession(id: string) {
+  return request<{ ok: boolean }>(`/api/v1/auth/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+export function changePassword(currentPassword: string, password: string) {
+  return request<{ ok: boolean }>("/api/v1/auth/change-password", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, password }),
   });
 }
 export function forgotPassword(email: string) {

@@ -20,6 +20,29 @@ export function useSiteTheme(): [Theme, () => void] {
   return [theme, () => setTheme(t => (t === "dark" ? "light" : "dark"))];
 }
 
+export type TextSize = number; // zoom percentage, 100–150
+const TEXT_KEY = "safetext:text";
+export const TEXT_MIN = 100;
+export const TEXT_MAX = 150;
+
+function readTextSize(): TextSize {
+  try {
+    const stored = localStorage.getItem(TEXT_KEY);
+    if (stored === "large") return 120; // migrate the old on/off preference
+    const value = Number(stored);
+    return Number.isFinite(value) ? Math.min(TEXT_MAX, Math.max(TEXT_MIN, Math.round(value))) : TEXT_MIN;
+  } catch { return TEXT_MIN; }
+}
+
+export function useTextSize(): [TextSize, (size: number) => void] {
+  const [size, setSize] = useState<TextSize>(readTextSize);
+  useEffect(() => {
+    document.documentElement.style.zoom = size === TEXT_MIN ? "" : `${size}%`;
+    try { localStorage.setItem(TEXT_KEY, String(size)); } catch { /* storage unavailable */ }
+  }, [size]);
+  return [size, setSize];
+}
+
 export const svgIcon = (size: number, children: ReactNode) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{children}</svg>
 );

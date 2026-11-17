@@ -56,6 +56,7 @@ export interface ScanResultDto {
   scanId: string;
   status: ScanStatus;
   extraction: { text: string; note?: string } | null;
+  riskyParts: { phrases: string[]; links: string[] };
   analysis: AnalysisResult | null;
   threatIntel: ThreatIntelResult | null;
   incomplete: Stage[];

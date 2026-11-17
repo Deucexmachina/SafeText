@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { svgIcon, type Theme } from "./SiteNav";
+import { svgIcon, TEXT_MAX, TEXT_MIN, type TextSize, type Theme } from "./SiteNav";
 
 const IconScan = () => svgIcon(22, <><path d="M5 4h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-7l-5 4v-4H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" /><path d="m8.8 10.2 2.2 2.2 4.3-4.4" /></>);
 const IconHistory = () => svgIcon(22, <><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" /><path d="M3.5 4v4h4" /><path d="M12 8v4.5l3 2" /></>);
@@ -9,6 +9,8 @@ const IconChevron = () => svgIcon(16, <path d="m6 9 6 6 6-6" />);
 const IconMoon = () => svgIcon(18, <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />);
 const IconSun = () => svgIcon(18, <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>);
 const IconLogout = () => svgIcon(18, <><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" /><path d="M10 17l5-5-5-5" /><path d="M15 12H4" /></>);
+const IconUser = () => svgIcon(18, <><circle cx="12" cy="8" r="4" /><path d="M4 20c1.6-3.4 4.4-5 8-5s6.4 1.6 8 5" /></>);
+const IconTextSize = () => svgIcon(18, <><path d="M3 17 8 5l5 12M4.9 13h6.2" /><path d="m15 17 3-6 3 6M16 14.8h4" /></>);
 
 type Tab = { to: string; label: string; Icon: () => JSX.Element; end?: boolean };
 
@@ -23,12 +25,14 @@ function tabsFor(isAdmin: boolean): Tab[] {
 
 const tabClass = (base: string) => ({ isActive }: { isActive: boolean }) => (isActive ? `${base} is-active` : base);
 
-export function AppNav({ email, isAdmin, theme, onToggleTheme, showThemeToggle, onSignOut }: {
+export function AppNav({ email, isAdmin, theme, onToggleTheme, showThemeToggle, textSize, onTextSize, onSignOut }: {
   email: string;
   isAdmin: boolean;
   theme: Theme;
   onToggleTheme: () => void;
   showThemeToggle: boolean;
+  textSize: TextSize;
+  onTextSize: (size: number) => void;
   onSignOut: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -70,6 +74,22 @@ export function AppNav({ email, isAdmin, theme, onToggleTheme, showThemeToggle, 
             </button>
             <div id="account-menu" className="ap-account-menu" hidden={!open}>
               <p className="ap-account-who">Signed in as<strong>{email}</strong></p>
+              <Link to="/account" className="ap-menu-item" onClick={() => setOpen(false)}>
+                <IconUser /><span>Account</span>
+              </Link>
+              {/* Inverse zoom keeps this control a constant size while the
+                  page scales behind it — otherwise the thumb oscillates
+                  under the cursor mid-drag on desktop. */}
+              <div className="ap-menu-item ap-menu-slider" style={{ zoom: `${TEXT_MIN / textSize}` }}>
+                <IconTextSize /><span>Text size</span>
+                <label className="ap-slider-wrap">
+                  <span className="visually-hidden">Text size</span>
+                  <input type="range" min={TEXT_MIN} max={TEXT_MAX} step={10} value={textSize}
+                    aria-valuetext={`${textSize} percent`}
+                    onChange={e => onTextSize(Number(e.target.value))} />
+                </label>
+                <span className="ap-slider-val" aria-hidden="true">{textSize}%</span>
+              </div>
               {showThemeToggle && (
                 <button type="button" className="ap-menu-item" aria-pressed={theme === "dark"} onClick={onToggleTheme}>
                   {theme === "dark" ? <IconSun /> : <IconMoon />}<span>Dark mode</span>
