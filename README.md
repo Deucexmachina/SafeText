@@ -126,13 +126,13 @@ for step-by-step instructions. Enter production secrets in Render Environment;
 local development reads `server/.env`. No Neon environment changes are needed.
 
 Missing delivery configuration returns the same clear 503 response for every
-email address. Configured requests return a generic response whether or not an
+email address once its request limits pass. Admitted requests return a generic response whether or not an
 enabled account exists. Provider acceptance does not guarantee inbox delivery;
 check Brevo transactional logs for bounces, suppression, and account restrictions.
 Provider submission has a 10-second timeout and is not automatically retried.
 Failed submissions invalidate only that request's code and log no credentials,
 recipient, or code. Successful resets revoke all sessions. Codes are hashed,
-expire after five minutes, allow eight failed guesses, and are single-use;
+expire after five minutes, default to eight failed guesses, and are single-use;
 concurrent requests serialize code replacement, validation, and consumption.
 
 Keys are read server-side only and are never sent to the frontend. A missing
@@ -192,8 +192,9 @@ and [Kimi K3](https://platform.kimi.ai/docs/guide/kimi-k3-quickstart).
 
 Passwords use salted scrypt hashes. Sessions last seven days, using random tokens
 in HttpOnly, SameSite cookies; the database stores only token hashes. Logout revokes
-the session. Login and registration share a limit of 20 attempts per IP and per
-account email per 15 minutes; the database-backed limit survives API restarts.
+the session. Login and registration share a budget of 100 attempts per IP and
+20 per normalized email per 15 minutes by default. Reset requests and code checks
+use separate budgets; all request counters persist in PostgreSQL across restarts.
 
 Browser writes must match `APP_ORIGIN` (default `http://localhost:5173`). Use that exact
 URL locally. Vite stays on port 5173 so it cannot silently change origins.
@@ -204,10 +205,11 @@ Email verification and multi-factor authentication are not implemented.
 
 ## Roles and administrator setup
 
-Every account starts as `user`, including the first registered account. There
-can be one `admin`, enforced by a database index. Registration/login cannot set
-roles. Existing accounts remain users after the migration. To make a trusted
-existing account the admin, run this locally from the project root:
+Every account starts as `user`, including the first registered account. Multiple
+trusted administrators can be promoted by an operator. Registration/login cannot
+set roles. Migration removes the old one-admin index without changing existing
+account roles or passwords. To promote a registered account, run this locally
+from the project root:
 
 ```powershell
 npm.cmd --prefix server run admin:grant -- your-admin-account@example.com
@@ -215,8 +217,8 @@ npm.cmd --prefix server run admin:grant -- your-admin-account@example.com
 
 Register that account first and choose its password in the app; there is no
 default admin password or public promotion endpoint. The command revokes that
-account's sessions; sign in again to see the **Admin** tab. It refuses to grant
-a second administrator. Never auto-promote the first visitor or grant admin
+account's sessions; sign in again to see the **Admin** tab. It preserves other
+administrators and their sessions. Never auto-promote the first visitor or grant admin
 based only on a public registration email, because email ownership is not verified.
 
 The admin can list accounts with scan counts and enable/disable ordinary users.
@@ -234,13 +236,15 @@ limits and npm dependency advisories. Automated tests cover privilege escalation
 cross-account access/deletion, session revocation and concurrent queue admission.
 This is a targeted code review and regression suite, not a penetration-test certification.
 
-- Authentication throttles IPs and account emails at 20 attempts per 15 minutes
-  using hashed keys in PostgreSQL, surviving restarts and multiple processes.
-- Scan submission is limited to 20 requests per account per 15 minutes in each
-  API process. Queue admission is enforced transactionally in PostgreSQL: at
+- Authentication, password-reset, general API, and scan limits use atomic
+  PostgreSQL counters with hashed identities. Rejected requests receive RFC 7807
+  JSON and `Retry-After` with the remaining wait. A limit-store outage fails closed
+  with 503; health probes are exempt from the general API quota.
+- Scan submission defaults to 20 requests per account per 15 minutes, shared
+  across API processes. Queue admission is enforced transactionally in PostgreSQL: at
   most three active scans per account and 100 globally. For multiple API
-  instances, use a shared scan-rate-limit store and a coordinated job runner;
-  the current in-process worker is intended for a single API instance.
+  instances, a coordinated job runner is still required. Sharing rate counters
+  does not make the in-process worker safe to run on multiple instances.
 - API responses use no-store, nosniff, frame denial, no-referrer, restrictive
   permissions and an API-only content-security policy. With `SERVE_WEB=true`,
   frontend responses receive a separate CSP allowing same-origin scripts and
@@ -260,6 +264,64 @@ This is a targeted code review and regression suite, not a penetration-test cert
   Use a strong unique admin password; configure backups/storage encryption and
   operational monitoring before exposing the app publicly. Audit dependencies
   regularly; a clean audit is a point-in-time advisory check.
+
+## Request rate limits
+
+On the public Render web service, set `CLIENT_IP_SOURCE=render`. This mode reads
+the platform-overwritten `CF-Connecting-IP` header and requires Render's built-in
+`RENDER=true` environment indicator. Keep `CLIENT_IP_SOURCE=socket` locally and on
+direct servers. Invalid/missing header values fall back to the socket address.
+Arbitrary `X-Forwarded-For` values are ignored; unrestricted Express `trust proxy`
+is never enabled. IPv6 client addresses share a /56 quota.
+[Render's trusted client IP guidance](https://render.com/articles/host-pocketbase-on-render).
+
+| Setting | Default | Scope |
+| --- | --- | --- |
+| `API_RATE_LIMIT_PER_MINUTE` | `300` | All `/api/v1` requests per IP, except GET/HEAD health probes |
+| `AUTH_RATE_LIMIT_PER_IP` | `100` | Login and registration combined per IP per 15 minutes |
+| `AUTH_RATE_LIMIT_PER_EMAIL` | `20` | Login and registration combined per normalized email per 15 minutes |
+| `RESET_REQUESTS_PER_HOUR_PER_IP` | `20` | Reset-email requests per IP per hour |
+| `RESET_REQUESTS_PER_HOUR_PER_EMAIL` | `5` | Reset-email requests per normalized email per hour |
+| `RESET_RESEND_COOLDOWN_SECONDS` | `60` | One reset-email request per normalized email per cooldown |
+| `RESET_VERIFY_PER_15_MIN_PER_IP` | `100` | Code verification and final reset combined per IP per 15 minutes |
+| `RESET_VERIFY_PER_15_MIN_PER_EMAIL` | `20` | Code verification per normalized email per 15 minutes |
+| `RESET_PASSWORD_ATTEMPTS_PER_MINUTE` | `5` | Final new-password submissions per normalized email per minute, including invalid submissions |
+| `RESET_MAX_CODE_ATTEMPTS` | `8` | Failed guesses allowed per reset code |
+| `SCAN_RATE_LIMIT_PER_15_MIN` | `20` | Scan submissions per authenticated user; a saved admin setting overrides this default |
+
+These limits have positive-integer validation and work without explicitly setting
+their environment variables. IP and email quotas both apply; a new email does not
+bypass the IP budget. Email-based request limits apply identically to registered,
+unknown, and disabled addresses. Reset traffic does not spend the login budget.
+Repeated clicks inside the resend cooldown also consume the hourly email request
+quota. Unknown/disabled accounts never cause email delivery. Code verification
+and final password submission use separate per-email budgets. There is no daily
+successful-reset cap; the obsolete `RESET_MAX_PER_DAY` variable is ignored and
+can be removed from Render. Legacy database counter columns are retained unused
+for migration compatibility.
+
+Counters use atomic fixed windows beginning with the first request, stored as
+hashed keys in `auth_attempts`. Blocked requests do not extend the current window.
+The existing hourly-on-traffic cleanup removes rows older than a day. This adds
+database writes during API traffic; monitor Neon usage. The application uses no
+Redis, external rate-limit service, or new scheduled job.
+
+Throttled responses include `Retry-After` and quota headers. The reset form uses
+server-provided retry delays; scan polling waits and resumes after 429, without
+automatically resubmitting scans or reset emails. A general limit-store error
+returns 503. Static pages/assets and GET/HEAD `/api/v1/health` remain available.
+Queue/storage capacity blocks also include a short retry hint, not a guaranteed
+completion time. Changing environment values takes effect after redeployment.
+
+Admin **Rate hits** combines `scanRateHits`, `authRateHits`, `resetRateHits`, and
+`apiRateHits`; existing scan counts remain intact. These are cumulative counters,
+not a count of all allowed requests. IP blocks are attributed only when a valid
+session is available; anonymous IP blocks cannot safely be assigned to a person.
+Email-bucket blocks describe requests targeting an account and can be caused by
+someone else. The counters do not automatically disable accounts.
+Admin-only `GET /api/v1/admin/network` shows the selected client IP/source for
+deployment verification. No raw IP/email/reset code is logged or stored in rate
+keys. This update starts new scoped buckets; old auth buckets age out normally.
 
 ## Storage retention and limits
 

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 
 test('RBAC and security boundaries against PostgreSQL', async t => {
@@ -38,13 +40,28 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
       assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true }, regular.cookie)).status, 403);
     });
     await pool.query("UPDATE users SET role = 'admin' WHERE id = $1", [operator.id]);
-    await t.test('only one administrator is allowed and roles are checked per request', async () => {
-      await assert.rejects(() => pool.query("UPDATE users SET role = 'admin' WHERE id = $1", [regular.id]), (err: unknown) => (err as { code?: string }).code === '23505');
+    await t.test('operator command upgrades the old single-admin schema and adds a second admin without replacing the first', async () => {
+      // Simulate the deployed schema before this migration.
+      await pool.query("CREATE UNIQUE INDEX users_single_admin ON users(role) WHERE role = 'admin'");
+      const granted = spawnSync(process.execPath, ['--import', 'tsx', 'src/db/admin.ts', 'regular@example.com'], {
+        cwd: fileURLToPath(new URL('../', import.meta.url)), windowsHide: true, encoding: 'utf8', timeout: 15000,
+        env: { ...process.env, DATABASE_URL: url.href },
+      });
+      assert.equal(granted.status, 0, granted.stderr);
+      assert.equal((await pool.query("SELECT count(*)::int AS count FROM users WHERE role = 'admin'")).rows[0].count, 2);
+      assert.equal((await call('/auth/me', 'GET', undefined, regular.cookie)).status, 401, 'promotion revokes only the promoted account sessions');
+      const login = await call('/auth/login', 'POST', { email: 'regular@example.com', password });
+      assert.equal(login.status, 200); regular.cookie = login.headers.get('set-cookie')!.split(';')[0];
+      assert.equal((await call('/admin/users', 'GET', undefined, regular.cookie)).status, 200);
       const res = await call('/admin/users', 'GET', undefined, operator.cookie); assert.equal(res.status, 200);
       const data = await res.json() as { users: Record<string, unknown>[] };
       assert.equal(data.users.length, 2);
       assert(data.users.every(user => !('password_hash' in user) && !('scans' in user)));
       assert.equal((await call('/admin/users?offset=Infinity', 'GET', undefined, operator.cookie)).status, 400);
+      assert.equal((await call(`/admin/users/${operator.id}`, 'PATCH', { disabled: true, reason: 'test', password }, regular.cookie)).status, 403);
+      assert.equal((await call(`/admin/users/${regular.id}`, 'PATCH', { disabled: true, reason: 'test', password }, operator.cookie)).status, 403);
+      await pool.query("UPDATE users SET role = 'user' WHERE id = $1", [regular.id]);
+      assert.equal((await call('/admin/users', 'GET', undefined, regular.cookie)).status, 403);
       await pool.query("UPDATE users SET role = 'user' WHERE id = $1", [operator.id]);
       assert.equal((await call('/admin/users', 'GET', undefined, operator.cookie)).status, 403);
       await pool.query("UPDATE users SET role = 'admin' WHERE id = $1", [operator.id]);
@@ -143,7 +160,7 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
       await pool.query("DELETE FROM scans WHERE id LIKE 'capacity_%'");
     });
     await t.test('login throttling enforces pre-existing database state', async () => {
-      const key = createHash('sha256').update('account:limited@example.com').digest('hex');
+      const key = createHash('sha256').update('auth-email:limited@example.com').digest('hex');
       await pool.query('INSERT INTO auth_attempts(key_hash, attempts, window_start) VALUES($1,20,now())', [key]);
       const res = await call('/auth/login', 'POST', { email: 'limited@example.com', password });
       assert.equal(res.status, 429); assert.equal(res.headers.get('retry-after'), '900');

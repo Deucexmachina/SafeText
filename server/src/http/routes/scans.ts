@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
 import multer from "multer";
-import { rateLimit } from "express-rate-limit";
 import {
   createScan,
   findIdByImageHash,
@@ -18,6 +17,7 @@ import { pool } from "../../db/pool.js";
 import { HttpError } from "../problem.js";
 import { IMAGE_MIMES, validImage } from "../../providers/ocr/imageValidation.js";
 import { runtimeSettings } from '../../db/settings.js';
+import { scanLimiter } from '../rateLimits.js';
 
 // Hard ceiling only; the admin-set limit is enforced below in the handler.
 const upload = multer({
@@ -31,15 +31,6 @@ scansRouter.get('/storage-policy', async (_req, res, next) => {
     const s = await runtimeSettings();
     res.json({ scanRetentionDays: s.scanRetentionDays, maxScansPerUser: s.maxScansPerUser });
   } catch (err) { next(err); }
-});
-const scanLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: async () => (await runtimeSettings()).scansPer15Min, keyGenerator: req => req.user!.id,
-  standardHeaders: 'draft-7', legacyHeaders: false,
-  handler: async (req, res) => {
-    // Repeated hits flag abusive accounts on the admin dashboard.
-    pool.query("UPDATE users SET scan_rate_hits = scan_rate_hits + 1 WHERE id = $1", [req.user!.id]).catch(() => {});
-    const limit = (await runtimeSettings()).scansPer15Min;
-    res.status(429).type('application/problem+json').json({ type: 'about:blank', title: 'Scan limit reached', status: 429, detail: `You can submit up to ${limit} scans every 15 minutes. Please try again later.` });
-  },
 });
 
 scansRouter.post(

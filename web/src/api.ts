@@ -46,6 +46,7 @@ export class ApiError extends Error {
     public status: number,
     public title: string,
     public detail: string,
+    public retryAfter: number | null = null,
   ) {
     super(detail);
   }
@@ -66,7 +67,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // non-JSON error body — keep the defaults
     }
-    throw new ApiError(res.status, title, detail);
+    const retryHeader = res.headers.get('Retry-After');
+    const retrySeconds = retryHeader ? (/^\d+$/.test(retryHeader) ? Number(retryHeader)
+      : Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000)) : NaN;
+    const retryAfter = Number.isFinite(retrySeconds) ? Math.max(1, retrySeconds) : null;
+    if (res.status === 429 && retryAfter && !/\b(seconds?|minutes?|hours?)\b/i.test(detail)) {
+      detail += ` Try again in ${retryAfter} seconds.`;
+    }
+    throw new ApiError(res.status, title, detail, retryAfter);
   }
   return res.json() as Promise<T>;
 }
@@ -113,6 +121,10 @@ export interface AdminUser extends User {
   lastActiveAt: string | null;
   failedLogins: number;
   scanRateHits: number;
+  authRateHits: number;
+  resetRateHits: number;
+  apiRateHits: number;
+  rateLimitHits: number;
   scanCount: number;
 }
 export interface UserFilter { search: string; status: "" | "active" | "disabled"; from: string; to: string }
@@ -200,7 +212,7 @@ export function logout() {
   });
 }
 export function forgotPassword(email: string) {
-  return request<{ ok: boolean }>("/api/v1/auth/forgot-password", {
+  return request<{ ok: boolean; resendAfter?: number }>("/api/v1/auth/forgot-password", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
   });
 }

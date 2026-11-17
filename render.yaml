@@ -17,6 +17,30 @@ services:
         value: production
       - key: SERVE_WEB
         value: "true"
+      - key: CLIENT_IP_SOURCE
+        value: render
+      - key: API_RATE_LIMIT_PER_MINUTE
+        value: "300"
+      - key: AUTH_RATE_LIMIT_PER_IP
+        value: "100"
+      - key: AUTH_RATE_LIMIT_PER_EMAIL
+        value: "20"
+      - key: RESET_REQUESTS_PER_HOUR_PER_IP
+        value: "20"
+      - key: RESET_REQUESTS_PER_HOUR_PER_EMAIL
+        value: "5"
+      - key: RESET_VERIFY_PER_15_MIN_PER_IP
+        value: "100"
+      - key: RESET_VERIFY_PER_15_MIN_PER_EMAIL
+        value: "20"
+      - key: RESET_PASSWORD_ATTEMPTS_PER_MINUTE
+        value: "5"
+      - key: RESET_RESEND_COOLDOWN_SECONDS
+        value: "60"
+      - key: RESET_MAX_CODE_ATTEMPTS
+        value: "8"
+      - key: SCAN_RATE_LIMIT_PER_15_MIN
+        value: "20"
       - key: SCAN_RETENTION_DAYS
         value: "30"
       - key: MAX_SCANS_PER_USER

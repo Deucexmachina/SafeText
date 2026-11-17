@@ -8,6 +8,7 @@ import { emailSender } from "../providers/index.js";
 import { sleep } from "../lib/sleep.js";
 import type { PoolClient } from 'pg';
 import { EmailDeliveryError } from '../providers/email/BrevoEmailSender.js';
+import { authLimiter, resetRequestLimiter, resetVerifyLimiter, resetPasswordLimiter } from './rateLimits.js';
 
 const derive = promisify(scrypt);
 const cookieName = "safetext_session";
@@ -67,30 +68,8 @@ export const checkOrigin: RequestHandler = (req, _res, next) => {
 
 export const authRouter = Router();
 authRouter.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
-// Database-backed limits survive restarts and apply across API processes.
-const limiter: RequestHandler = async (req, res, next) => {
-  try {
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-    for (const value of [`ip:${req.ip}`, `account:${email}`]) {
-      const key = createHash('sha256').update(value).digest('hex');
-      const { rows } = await pool.query<{ attempts: number }>(
-        `INSERT INTO auth_attempts(key_hash, attempts, window_start) VALUES($1, 1, now())
-         ON CONFLICT(key_hash) DO UPDATE SET
-           attempts = CASE WHEN auth_attempts.window_start < now() - interval '15 minutes' THEN 1 ELSE LEAST(auth_attempts.attempts + 1, 21) END,
-           window_start = CASE WHEN auth_attempts.window_start < now() - interval '15 minutes' THEN now() ELSE auth_attempts.window_start END
-         RETURNING attempts`, [key]);
-      if (rows[0].attempts > 20) {
-        res.setHeader('Retry-After', '900');
-        throw new HttpError(429, 'Too many attempts', 'Try again in 15 minutes.');
-      }
-    }
-    await pool.query("DELETE FROM auth_attempts WHERE window_start < now() - interval '1 day'");
-    next();
-  } catch (err) { next(err); }
-};
-
 for (const action of ["register", "login"] as const) {
-  authRouter.post(`/${action}`, limiter, async (req, res, next) => {
+  authRouter.post(`/${action}`, authLimiter, async (req, res, next) => {
     try {
       if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send credentials as application/json.");
       if (req.body?.role !== undefined || req.body?.disabled !== undefined) throw new HttpError(400, "Invalid request", "Account permissions cannot be set during registration or login.");
@@ -163,9 +142,7 @@ for (const action of ["register", "login"] as const) {
 }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE_TTL_MS = 5 * 60 * 1000;
-const RESEND_COOLDOWN_MS = 60 * 1000;
-const MAX_CODE_ATTEMPTS = 8;
-const MAX_RESETS_PER_DAY = 3;
+const MAX_CODE_ATTEMPTS = config.resetMaxCodeAttempts;
 
 function resetCodeHash(userId: string, code: string): string {
   return createHash("sha256").update(`${userId}:${code}`).digest("hex");
@@ -211,7 +188,7 @@ async function validateResetCode(
 
 // Always answers the same way: the response never reveals whether the address
 // is registered or whether an email was actually sent.
-authRouter.post("/forgot-password", limiter, async (req, res, next) => {
+authRouter.post("/forgot-password", resetRequestLimiter, async (req, res, next) => {
   try {
     if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
@@ -227,10 +204,6 @@ authRouter.post("/forgot-password", limiter, async (req, res, next) => {
       const { rows: [user] } = await client.query<{ id: string; disabled: boolean }>(
         'SELECT id, disabled FROM users WHERE email = $1 FOR UPDATE', [email]);
       if (user && !user.disabled) {
-        const { rows: [existing] } = await client.query<{ created_at: Date }>(
-          'SELECT created_at FROM password_resets WHERE user_id = $1', [user.id]);
-        const coolingDown = !!existing && Date.now() - existing.created_at.getTime() < RESEND_COOLDOWN_MS;
-        if (!coolingDown) {
           const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
           const hash = resetCodeHash(user.id, code);
           await client.query(
@@ -239,7 +212,6 @@ authRouter.post("/forgot-password", limiter, async (req, res, next) => {
              SET code_hash = $2, expires_at = $3, used_at = NULL, attempts = 0, created_at = now()`,
             [user.id, hash, new Date(Date.now() + CODE_TTL_MS)]);
           delivery = { userId: user.id, code, hash };
-        }
       }
       await client.query('COMMIT');
     } catch (err) { await client.query('ROLLBACK'); throw err; }
@@ -257,11 +229,11 @@ authRouter.post("/forgot-password", limiter, async (req, res, next) => {
       // Blunt the timing difference between known and unknown addresses.
       await sleep(150 + Math.random() * 150);
     }
-    res.json({ ok: true });
+    res.json({ ok: true, resendAfter: config.resetResendCooldownSeconds });
   } catch (err) { next(err); }
 });
 
-authRouter.post("/verify-reset-code", limiter, async (req, res, next) => {
+authRouter.post("/verify-reset-code", resetVerifyLimiter, async (req, res, next) => {
   try {
     if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
@@ -282,7 +254,7 @@ authRouter.post("/verify-reset-code", limiter, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-authRouter.post("/reset-password", limiter, async (req, res, next) => {
+authRouter.post("/reset-password", resetPasswordLimiter, async (req, res, next) => {
   try {
     if (!req.is("application/json")) throw new HttpError(415, "Invalid request", "Send application/json.");
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
@@ -308,23 +280,7 @@ authRouter.post("/reset-password", limiter, async (req, res, next) => {
          AND used_at IS NULL AND expires_at > clock_timestamp() AND attempts < $3 RETURNING user_id`,
         [userId, resetCodeHash(userId, code), MAX_CODE_ATTEMPTS]);
       if (!consumed[0]) throw new HttpError(400, "Invalid or expired code", "The code is invalid or has expired. Request a new one.");
-      // Row lock keeps the per-day cap atomic across concurrent resets.
-      const { rows: [account] } = await client.query<{ resets: number; next_at: Date | null }>(
-        `SELECT password_reset_count AS resets,
-                CASE WHEN password_reset_window > now() - interval '1 day'
-                     THEN password_reset_window + interval '1 day' END AS next_at
-           FROM users WHERE id = $1 FOR UPDATE`, [userId]);
-      if (account && account.resets >= MAX_RESETS_PER_DAY && account.next_at) {
-        res.setHeader('Retry-After', String(Math.max(1, Math.ceil((account.next_at.getTime() - Date.now()) / 1000))));
-        throw new HttpError(429, 'Too many resets', 'Passwords can be reset at most 3 times per day. Try again later.');
-      }
-      await client.query(
-        `UPDATE users SET password_hash = $2,
-           password_reset_count = CASE WHEN password_reset_window IS NULL OR password_reset_window < now() - interval '1 day'
-                THEN 1 ELSE password_reset_count + 1 END,
-           password_reset_window = CASE WHEN password_reset_window IS NULL OR password_reset_window < now() - interval '1 day'
-                THEN now() ELSE password_reset_window END
-         WHERE id = $1`, [userId, hash]);
+      await client.query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, hash]);
       // Sessions minted under the old password are all ended.
       await client.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
       await client.query('COMMIT');

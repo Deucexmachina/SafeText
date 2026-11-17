@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin'));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT false;
--- Successful password resets are capped per rolling day.
+-- Legacy reset counters are retained for migration compatibility; the current policy is request-based.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_window TIMESTAMPTZ;
 -- Activity and abuse signals surfaced on the admin dashboard.
@@ -20,9 +20,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_logins INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS scan_rate_hits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_rate_hits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_rate_hits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS api_rate_hits INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_reason TEXT;
--- The product has one administrator; concurrent promotions cannot create two.
-CREATE UNIQUE INDEX IF NOT EXISTS users_single_admin ON users(role) WHERE role = 'admin';
+-- Multiple operator-promoted admins are allowed. Never infer admin access from an email address.
+DROP INDEX IF EXISTS users_single_admin;
 
 CREATE TABLE IF NOT EXISTS admin_audit (
   id BIGSERIAL PRIMARY KEY,

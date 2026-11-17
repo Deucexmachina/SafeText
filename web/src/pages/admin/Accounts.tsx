@@ -142,6 +142,8 @@ export function Accounts() {
 
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {notice && <p className="ap-alert ap-alert-info" role="status">{Icons.check()}<span>{notice}</span></p>}
+      <p className="ap-muted">Rate hits are accumulated blocks across scans, login, password reset, and API requests.
+        Login/reset hits can come from someone targeting the email address; they are not proof of abuse by its owner.</p>
 
       <div className="ap-card ad-table-card">
         {loading ? <Loading label="Loading accounts..." /> : !users.length ? (
@@ -173,7 +175,7 @@ export function Accounts() {
                   <td>
                     <div className="ad-warnings">
                       <span><span className="ad-warn-label">Failed logins</span><Signal value={user.failedLogins} threshold={5} title={`${user.failedLogins} failed login attempts`} /></span>
-                      <span><span className="ad-warn-label">Rate hits</span><Signal value={user.scanRateHits} threshold={3} title={`${user.scanRateHits} scan rate-limit hits`} /></span>
+                      <span><span className="ad-warn-label">Rate hits</span><Signal value={user.rateLimitHits ?? user.scanRateHits} threshold={3} title={`Scans: ${user.scanRateHits}; login/registration: ${user.authRateHits ?? 0}; reset: ${user.resetRateHits ?? 0}; general API: ${user.apiRateHits ?? 0}. Email-targeted requests may come from someone else.`} /></span>
                     </div>
                   </td>
                   <td>
@@ -200,7 +202,7 @@ export function Accounts() {
                 <dl className="ad-facts">
                   <div><dt>Scans</dt><dd className="ad-num">{user.scanCount}</dd></div>
                   <div><dt>Failed logins</dt><dd><Signal value={user.failedLogins} threshold={5} title={`${user.failedLogins} failed login attempts`} /></dd></div>
-                  <div><dt>Rate hits</dt><dd><Signal value={user.scanRateHits} threshold={3} title={`${user.scanRateHits} scan rate-limit hits`} /></dd></div>
+                  <div><dt>Rate hits</dt><dd><Signal value={user.rateLimitHits ?? user.scanRateHits} threshold={3} title={`Scans: ${user.scanRateHits}; login/registration: ${user.authRateHits ?? 0}; reset: ${user.resetRateHits ?? 0}; general API: ${user.apiRateHits ?? 0}. Email-targeted requests may come from someone else.`} /></dd></div>
                   <div><dt>Last active</dt><dd>{ago(user.lastActiveAt)}</dd></div>
                   <div><dt>Last login</dt><dd>{ago(user.lastLoginAt)}</dd></div>
                 </dl>
