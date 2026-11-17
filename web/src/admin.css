@@ -588,3 +588,12 @@
 .ad-audit-table .ad-audit-detail, .ad .ad-audit-table .ad-audit-detail li { max-width: 300px; }
 .ad-card-btn { position: relative; padding-right: 44px; }
 .ad-card-chevron { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); }
+
+/* Settings: announcement type + end time */
+.ad-announce-grid { display: grid; gap: 18px; margin-top: 16px; }
+@media (min-width: 760px) { .ad-announce-grid { grid-template-columns: 1fr 1fr; align-items: start; } }
+.ad-seg-row label.is-on.is-warn { color: #6b4500; background: #fff7e6; border-color: #f0cf8c; }
+.lp[data-theme="dark"] .ad-seg-row label.is-on.is-warn { color: #ffe2a8; background: #33270e; border-color: #6e5320; }
+.ad-optional { font-weight: 400; color: var(--lp-muted); }
+.ad-until-row { display: flex; gap: 8px; align-items: center; }
+.ad-until-row .ad-input { max-width: 260px; }

@@ -284,8 +284,10 @@
   .lp-nav-actions { gap: 8px; }
 }
 
-.lp-notices { padding-top: 12px; }
-.lp-notices > * { margin: 0 0 8px; }
+/* Announcement / maintenance bars sit flush under the navbar; errors get breathing room. */
+.lp-notices { display: grid; }
+.lp-notice-error { padding-top: 12px; }
+.lp-notice-error > * { margin: 0; }
 
 /* ------------------------------------------------------------------ */
 /* Hero                                                                */

@@ -9,9 +9,13 @@ export interface RuntimeSettings {
   maxUploadMb: number;
   maintenance: boolean;
   announcement: string;
+  /** "info" (calm) or "warning" (amber), chosen by the admin. */
+  announcementType: "info" | "warning";
+  /** ISO time after which the announcement is no longer shown; null = until removed. */
+  announcementUntil: string | null;
 }
 
-const KEYS = ["scans_per_15min", "max_scans_per_user", "scan_retention_days", "max_upload_mb", "maintenance", "announcement"] as const;
+const KEYS = ["scans_per_15min", "max_scans_per_user", "scan_retention_days", "max_upload_mb", "maintenance", "announcement", "announcement_type", "announcement_until"] as const;
 
 const asInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
@@ -30,7 +34,15 @@ export async function runtimeSettings(client?: PoolClient): Promise<RuntimeSetti
     maxUploadMb: asInt(stored.max_upload_mb, 8),
     maintenance: stored.maintenance === "true",
     announcement: typeof stored.announcement === "string" ? stored.announcement : "",
+    announcementType: stored.announcement_type === "warning" ? "warning" : "info",
+    announcementUntil: stored.announcement_until && !Number.isNaN(Date.parse(stored.announcement_until)) ? stored.announcement_until : null,
   };
+}
+
+/** The announcement users should see right now: empty once its end time has passed. */
+export function activeAnnouncement(s: RuntimeSettings, now = Date.now()): { text: string; type: RuntimeSettings["announcementType"]; until: string | null } {
+  const expired = s.announcementUntil !== null && Date.parse(s.announcementUntil) <= now;
+  return expired || !s.announcement ? { text: "", type: s.announcementType, until: null } : { text: s.announcement, type: s.announcementType, until: s.announcementUntil };
 }
 
 export async function saveSettings(entries: Record<string, string>, client?: PoolClient): Promise<void> {

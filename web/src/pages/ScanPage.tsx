@@ -10,6 +10,7 @@ const MAX_TEXT = 10_000;
 
 const IconImage = () => svgIcon(28, <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m20.5 16-5-5-8.5 8.5" /></>);
 const IconX = () => svgIcon(18, <path d="M6 6l12 12M18 6 6 18" />);
+const IconPause = () => svgIcon(18, <><circle cx="12" cy="12" r="9" /><path d="M10 9v6M14 9v6" /></>);
 const IconAlert = () => svgIcon(18, <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.5" /><path d="M12 16.5h.01" /></>);
 const IconInfo = () => svgIcon(18, <><circle cx="12" cy="12" r="9" /><path d="M12 11v5.5" /><path d="M12 7.5h.01" /></>);
 const IconCheck = () => svgIcon(14, <path d="m5 12.5 4.5 4.5L19 7.5" />);
@@ -54,7 +55,7 @@ function ScanProgress({ progress, inputType }: { progress?: string | null; input
   );
 }
 
-export function ScanPage() {
+export function ScanPage({ maintenance = false }: { maintenance?: boolean }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [scanId, setScanId] = useState<string | null>(null);
@@ -184,7 +185,7 @@ export function ScanPage() {
   const hasText = !!text.trim();
   const both = !!file && hasText;
   const tooLong = text.length > MAX_TEXT;
-  const canSubmit = (hasText || !!file) && !both && !tooLong && !submitting && !validatingImage && !imageError;
+  const canSubmit = (hasText || !!file) && !both && !tooLong && !submitting && !validatingImage && !imageError && !maintenance;
 
   return (
     <div className="ap-page">
@@ -283,10 +284,16 @@ export function ScanPage() {
         )}
         {error && <div className="ap-alert ap-alert-error" role="alert"><IconAlert /><span>{error}</span></div>}
 
+        {maintenance && (
+          <div className="ap-alert ap-alert-warn" role="status">
+            <IconPause />
+            <span><strong>Scanning is paused during maintenance.</strong> You can still view your history. Please try again later.</span>
+          </div>
+        )}
         <button className="lp-btn lp-btn-primary lp-btn-lg ap-submit" disabled={!canSubmit} aria-busy={submitting}>
           {submitting ? <><span className="lp-spinner" aria-hidden="true" />Scanning…</> : "Check message"}
         </button>
-        {!hasText && !file && !submitting && <p className="ap-hint ap-center">Add a message or a screenshot to start.</p>}
+        {!hasText && !file && !submitting && !maintenance && <p className="ap-hint ap-center">Add a message or a screenshot to start.</p>}
       </form>
     </div>
   );

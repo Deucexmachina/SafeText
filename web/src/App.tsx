@@ -10,6 +10,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { AccountPage } from "./pages/AccountPage";
 import { LandingPage } from "./pages/LandingPage";
 import { AppNav } from "./components/AppNav";
+import { StatusBanners } from "./components/StatusBanners";
 import { useSiteTheme, useTextSize } from "./components/SiteNav";
 import "./landing.css";
 import "./app.css";
@@ -19,7 +20,21 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<AppStatus | null>(null);
-  useEffect(() => { getStatus().then(setStatus).catch(() => {}); }, []);
+  // Site status (maintenance / announcement): loaded on start, then refreshed every
+  // few minutes and when the person returns to the tab, so changes show without a reload.
+  useEffect(() => {
+    let last = 0;
+    const refresh = () => {
+      if (document.visibilityState === "hidden" || Date.now() - last < 30_000) return;
+      last = Date.now();
+      getStatus().then(setStatus).catch(() => {});
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 3 * 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("focus", refresh); };
+  }, []);
   async function loadSession() {
     setLoading(true); setError("");
     try { setUser((await currentUser()).user); }
@@ -82,18 +97,17 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
     window.addEventListener("focus", recheck);
     return () => { document.removeEventListener("visibilitychange", recheck); window.removeEventListener("focus", recheck); };
   }, [user]);
-  const notices = <>
-    {status?.maintenance && <p className="notice banner" role="status">SafeText is under maintenance — new scans are paused. Please check back soon.</p>}
-    {status?.announcement && <p className="notice banner" role="status">{status.announcement}</p>}
-    {error && <p role="alert" className="error-box">{error} {!user && <button className="link-btn" onClick={onRetry}>Retry</button>}</p>}
-  </>;
+  // Announcement and maintenance bars sit full-width under the navbar on every page.
+  const banners = <StatusBanners status={status} />;
+  const errorNotice = error ? <p role="alert" className="error-box">{error} {!user && <button className="link-btn" onClick={onRetry}>Retry</button>}</p> : null;
+  const notices = <>{banners}{errorNotice}</>;
 
   // Logged-out visitors on the home page see the public landing page.
   // Login and sign-up open there in a dialog that reuses AuthPage.
   // The password-recovery flow shares the landing page's navbar and styling.
   if (!loading && !user && (pathname === "/" || pathname === "/forgot-password")) {
     const hasNotice = Boolean(status?.maintenance || status?.announcement || error);
-    const pageNotices = hasNotice ? notices : undefined;
+    const pageNotices = hasNotice ? <>{banners}{errorNotice && <div className="lp-wrap lp-notice-error">{errorNotice}</div>}</> : undefined;
     return pathname === "/"
       ? <LandingPage onLogin={onLogin} notices={pageNotices} />
       : <ForgotPasswordPage notices={pageNotices} />;
@@ -116,10 +130,11 @@ function Shell({ user, loading, error, status, onLogin, onRetry, onSignOut }: {
       <a className="lp-skip" href="#main-content">Skip to content</a>
       <AppNav key={user.id} email={user.email} isAdmin={user.role === "admin"} theme={theme} onToggleTheme={toggleTheme}
         showThemeToggle textSize={textSize} onTextSize={setTextSize} onSignOut={signOutToLanding} />
+      {banners}
       <main id="main-content" tabIndex={-1} className={adminRoute ? "ap-main ap-main-admin" : "ap-main"}>
-        {(status?.maintenance || status?.announcement || error) && <div className="ap-notices">{notices}</div>}
+        {errorNotice && <div className="ap-notices">{errorNotice}</div>}
         <Routes key={user.id}>
-          <Route path="/" element={<ScanPage />} />
+          <Route path="/" element={<ScanPage maintenance={!!status?.maintenance} />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/scan/:id" element={<ScanDetailPage />} />

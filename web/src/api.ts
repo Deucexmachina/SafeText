@@ -160,7 +160,8 @@ export interface AdminOverview {
   };
 }
 export function getAdminOverview() { return request<AdminOverview>('/api/v1/admin/overview'); }
-export interface AppStatus { maintenance: boolean; announcement: string }
+// announcement is "" when there is none or it has passed its end time.
+export interface AppStatus { maintenance: boolean; announcement: string; announcementType?: "info" | "warning"; announcementUntil?: string | null }
 export function getStatus() { return request<AppStatus>('/api/v1/status'); }
 export function reportScan(id: string, expectedVerdict: string, includeMessage: boolean) {
   return request<{ ok: boolean }>(`/api/v1/scan/${encodeURIComponent(id)}/report`, {
@@ -182,7 +183,7 @@ export interface Report { scanId: string; createdAt: string; email: string; repo
 export function listReports() {
   return request<{ rows: Report[]; falseAlarms: number; missedScams: number }>('/api/v1/admin/reports');
 }
-export interface AdminSettings { scansPer15Min: number; maxScansPerUser: number; scanRetentionDays: number; maxUploadMb: number; maintenance: boolean; announcement: string }
+export interface AdminSettings { scansPer15Min: number; maxScansPerUser: number; scanRetentionDays: number; maxUploadMb: number; maintenance: boolean; announcement: string; announcementType: "info" | "warning"; announcementUntil: string | null }
 export function getAdminSettings() { return request<AdminSettings>('/api/v1/admin/settings'); }
 export function saveAdminSettings(body: Partial<AdminSettings>) {
   return request<AdminSettings>('/api/v1/admin/settings', {

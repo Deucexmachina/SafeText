@@ -138,7 +138,7 @@ export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => voi
       {/* 1. Navbar (shared with the password-recovery pages) */}
       <SiteNav theme={theme} onToggleTheme={toggleTheme} onAuth={openAuth} />
 
-      {notices && <div className="lp-wrap lp-notices">{notices}</div>}
+      {notices && <div className="lp-notices">{notices}</div>}
 
       <main id="main-content" tabIndex={-1}>
         {/* 2. Hero */}

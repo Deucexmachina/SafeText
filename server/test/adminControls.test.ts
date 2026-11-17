@@ -108,6 +108,41 @@ test("domain lists, reports, runtime settings and maintenance mode", async t => 
       assert.equal((await call("/admin/settings", "PUT", { announcement: "" }, operator.cookie)).status, 200);
     });
 
+    await t.test("announcement type and end time: validated, shown on status, hidden once expired, audited", async () => {
+      type Status = { announcement: string; announcementType: string; announcementUntil: string | null };
+      const status = async () => await (await call("/status")).json() as Status;
+      // Defaults: information, no end time.
+      assert.equal((await call("/admin/settings", "PUT", { announcement: "Exams week" }, operator.cookie)).status, 200);
+      assert.deepEqual(await status(), { maintenance: false, announcement: "Exams week", announcementType: "info", announcementUntil: null } as unknown as Status);
+      // Validation.
+      for (const bad of [{ announcementType: "urgent" }, { announcementUntil: "not a date" }, { announcementUntil: 12 },
+        { announcementUntil: new Date(Date.now() - 60_000).toISOString() }, { announcementUntil: new Date(Date.now() + 400 * 86_400_000).toISOString() }]) {
+        assert.equal((await call("/admin/settings", "PUT", bad, operator.cookie)).status, 400, JSON.stringify(bad));
+      }
+      // Warning with a future end time is shown with both.
+      const until = new Date(Date.now() + 3 * 86_400_000).toISOString();
+      assert.equal((await call("/admin/settings", "PUT", { announcementType: "warning", announcementUntil: until }, operator.cookie)).status, 200);
+      let shown = await status();
+      assert.equal(shown.announcementType, "warning"); assert.equal(shown.announcementUntil, until); assert.equal(shown.announcement, "Exams week");
+      const settings = await (await call("/admin/settings", "GET", undefined, operator.cookie)).json() as { announcementType: string; announcementUntil: string };
+      assert.equal(settings.announcementType, "warning"); assert.equal(settings.announcementUntil, until);
+      // The change is audited in plain words.
+      const audit = await (await call("/admin/audit?page=1", "GET", undefined, operator.cookie)).json() as { audit: { action: string; view: { changes: { label: string; before: string; after: string }[] } }[] };
+      const changes = audit.audit.find(e => e.action === "update_settings")!.view.changes;
+      assert.deepEqual(changes.find(c => c.label === "Announcement type"), { label: "Announcement type", before: "Information", after: "Warning" });
+      assert.match(changes.find(c => c.label === "Announcement ends")!.after, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/);
+      // Once the end time passes, users no longer get the announcement (admins still see it in Settings).
+      await pool.query("UPDATE settings SET value = $1 WHERE key = 'announcement_until'", [new Date(Date.now() - 1000).toISOString()]);
+      shown = await status();
+      assert.equal(shown.announcement, ""); assert.equal(shown.announcementUntil, null);
+      const adminView = await (await call("/admin/settings", "GET", undefined, operator.cookie)).json() as { announcement: string };
+      assert.equal(adminView.announcement, "Exams week");
+      // Clearing the end time shows it again until removed.
+      assert.equal((await call("/admin/settings", "PUT", { announcementUntil: null, announcementType: "info" }, operator.cookie)).status, 200);
+      assert.equal((await status()).announcement, "Exams week");
+      assert.equal((await call("/admin/settings", "PUT", { announcement: "" }, operator.cookie)).status, 200);
+    });
+
     await t.test("maintenance mode pauses new scans and shows on public status", async () => {
       assert.equal((await call("/admin/settings", "PUT", { maintenance: true }, operator.cookie)).status, 200);
       const status = await (await call("/status")).json() as { maintenance: boolean };

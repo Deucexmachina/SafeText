@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { maintainStorage } from './db/retention.js';
-import { runtimeSettings } from './db/settings.js';
+import { activeAnnouncement, runtimeSettings } from './db/settings.js';
 import { scansRouter } from "./http/routes/scans.js";
 import { HttpError, sendProblem } from "./http/problem.js";
 import { authRouter, checkOrigin, requireAuth } from "./http/auth.js";
@@ -40,7 +40,9 @@ export function createApp() {
   app.get("/api/v1/status", async (_req, res, next) => {
     try {
       const s = await runtimeSettings();
-      res.json({ maintenance: s.maintenance, announcement: s.announcement });
+      // An announcement past its end time is no longer sent to users.
+      const active = activeAnnouncement(s);
+      res.json({ maintenance: s.maintenance, announcement: active.text, announcementType: active.type, announcementUntil: active.until });
     } catch (err) { next(err); }
   });
   app.use("/api/v1/auth", authRouter);

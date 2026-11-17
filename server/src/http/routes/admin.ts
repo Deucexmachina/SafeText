@@ -351,6 +351,23 @@ adminRouter.put("/settings", async (req, res, next) => {
       }
       entries.announcement = b.announcement;
     }
+    if (b.announcementType !== undefined) {
+      if (b.announcementType !== "info" && b.announcementType !== "warning") {
+        throw new HttpError(400, "Invalid request", "announcementType must be info or warning.");
+      }
+      entries.announcement_type = b.announcementType;
+    }
+    if (b.announcementUntil !== undefined) {
+      // null or "" clears the end time (shown until removed).
+      if (b.announcementUntil === null || b.announcementUntil === "") entries.announcement_until = "";
+      else {
+        const until = typeof b.announcementUntil === "string" ? Date.parse(b.announcementUntil) : NaN;
+        if (Number.isNaN(until)) throw new HttpError(400, "Invalid request", "announcementUntil must be a date and time.");
+        if (until <= Date.now()) throw new HttpError(400, "Invalid request", "The end time must be in the future.");
+        if (until > Date.now() + 366 * 24 * 60 * 60 * 1000) throw new HttpError(400, "Invalid request", "The end time must be within a year.");
+        entries.announcement_until = new Date(until).toISOString();
+      }
+    }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -374,11 +391,15 @@ const SETTING_LABELS: Record<keyof RuntimeSettings, string> = {
   maxUploadMb: 'Max upload (MB)',
   maintenance: 'Maintenance mode',
   announcement: 'Announcement',
+  announcementType: 'Announcement type',
+  announcementUntil: 'Announcement ends',
 };
 
 function settingChanges(before: RuntimeSettings, after: RuntimeSettings): string[] {
   const show = (key: keyof RuntimeSettings, value: RuntimeSettings[keyof RuntimeSettings]) => {
     if (key === 'maintenance') return value ? 'on' : 'off';
+    if (key === 'announcementType') return value === 'warning' ? 'Warning' : 'Information';
+    if (key === 'announcementUntil') return value ? `${String(value).slice(0, 16).replace('T', ' ')} UTC` : '(none)';
     if (key === 'announcement') {
       const text = String(value);
       return text ? `"${text}"` : '(none)';

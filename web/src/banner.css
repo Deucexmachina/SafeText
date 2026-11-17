@@ -1,0 +1,89 @@
+/* ------------------------------------------------------------------ */
+/* Site-wide announcement / maintenance bars (StatusBanners.tsx).      */
+/* Full-width under the navbar; uses the --lp-* tokens so light and    */
+/* dark mode both work, with fallbacks for pages outside the .lp shell. */
+/* ------------------------------------------------------------------ */
+
+.st-banners { display: grid; }
+
+.st-banner {
+  --bn-bg: var(--lp-chip, #e2f0e6);
+  --bn-line: color-mix(in srgb, var(--lp-chip-fg, #14532d) 22%, transparent);
+  --bn-ink: var(--lp-heading, #17324d);
+  --bn-accent: var(--lp-chip-fg, #14532d);
+  --bn-icon-bg: var(--lp-surface, #ffffff);
+  background: var(--bn-bg);
+  border-bottom: 1px solid var(--bn-line);
+  color: var(--bn-ink);
+}
+.st-banner-warn {
+  --bn-bg: #fff7e6;
+  --bn-line: #f0cf8c;
+  --bn-ink: #5c3b00;
+  --bn-accent: #6b4500;
+  --bn-icon-bg: color-mix(in srgb, #8a5a00 16%, transparent);
+}
+.lp[data-theme="dark"] .st-banner-warn {
+  --bn-bg: #33270e;
+  --bn-line: #6e5320;
+  --bn-ink: #ffe9bf;
+  --bn-accent: #ffd27a;
+  --bn-icon-bg: color-mix(in srgb, #ffd27a 16%, transparent);
+}
+
+.st-banner-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 10px 20px;
+}
+.st-banner-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: -2px;
+  border-radius: 8px;
+  background: var(--bn-icon-bg);
+  color: var(--bn-accent);
+}
+.st-banner-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.st-banner-label { font-weight: 800; color: var(--bn-accent); margin-right: 8px; }
+.st-banner-close {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin: -6px -8px -6px 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bn-accent);
+  cursor: pointer;
+}
+.st-banner-close:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+.st-banner-close:focus-visible { outline: 3px solid var(--lp-focus, #14532d); outline-offset: 1px; }
+
+@media (max-width: 640px) {
+  .st-banner-inner { padding: 10px 16px; }
+  .st-banner-close { width: 44px; height: 44px; margin: -10px -12px -10px 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .st-banner { animation: st-banner-in 0.25s ease-out; }
+}
+@keyframes st-banner-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Admin Settings: the live preview sits inside a card */
+.st-banner-preview .st-banner { border: 1px solid var(--bn-line); border-radius: 10px; }
+.st-banner-preview .st-banner-inner { padding: 10px 14px; }

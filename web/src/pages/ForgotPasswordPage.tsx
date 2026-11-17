@@ -281,7 +281,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
   return (
     <div className="lp rc-page" data-theme={theme}>
       <SiteNav theme={theme} onToggleTheme={toggleTheme} />
-      {notices && <div className="lp-wrap lp-notices">{notices}</div>}
+      {notices && <div className="lp-notices">{notices}</div>}
 
       <main id="main-content" tabIndex={-1} className="rc-main">
         <div className="rc-card" ref={cardRef}>
