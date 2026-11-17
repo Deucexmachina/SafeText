@@ -119,6 +119,56 @@ test('RBAC and security boundaries against PostgreSQL', async t => {
       assert.match(await csv.text(), /force_logout/);
       assert.equal((await call('/admin/audit', 'GET', undefined, reCookie)).status, 401);
     });
+    await t.test('every admin change is audited: domains, settings and audit export', async () => {
+      type Entry = { action: string; targetEmail: string | null; details: string | null; actorEmail: string };
+      const latest = async () => (await (await call('/admin/audit?limit=1', 'GET', undefined, operator.cookie)).json() as { audit: Entry[] }).audit[0];
+      const count = async () => (await pool.query('SELECT count(*)::int AS c FROM admin_audit')).rows[0].c as number;
+
+      // Adding, moving and removing a domain each leave one entry with no target account.
+      assert.equal((await call('/admin/domains', 'POST', { domain: 'audit-test.example', list: 'block' }, operator.cookie)).status, 200);
+      let entry = await latest();
+      assert.equal(entry.action, 'add_domain'); assert.equal(entry.targetEmail, null);
+      assert.equal(entry.details, 'audit-test.example → Blocklist'); assert.equal(entry.actorEmail, 'operator@example.com');
+      const beforeNoop = await count();
+      assert.equal((await call('/admin/domains', 'POST', { domain: 'audit-test.example', list: 'block' }, operator.cookie)).status, 200);
+      assert.equal(await count(), beforeNoop, 're-adding to the same list changes nothing and is not logged');
+      assert.equal((await call('/admin/domains', 'POST', { domain: 'audit-test.example', list: 'allow' }, operator.cookie)).status, 200);
+      entry = await latest();
+      assert.equal(entry.action, 'move_domain'); assert.equal(entry.details, 'audit-test.example: Blocklist → Allowlist');
+      assert.equal((await call('/admin/domains/audit-test.example', 'DELETE', undefined, operator.cookie)).status, 200);
+      entry = await latest();
+      assert.equal(entry.action, 'remove_domain'); assert.equal(entry.details, 'audit-test.example (was on the Allowlist)');
+
+      // Settings record only what changed, as before → after.
+      const current = await (await call('/admin/settings', 'GET', undefined, operator.cookie)).json() as { scanRetentionDays: number; maintenance: boolean };
+      const retention = current.scanRetentionDays === 14 ? 15 : 14;
+      assert.equal((await call('/admin/settings', 'PUT', { scanRetentionDays: retention, maintenance: !current.maintenance, announcement: 'Exams week' }, operator.cookie)).status, 200);
+      entry = await latest();
+      assert.equal(entry.action, 'update_settings'); assert.equal(entry.targetEmail, null);
+      assert.match(entry.details!, new RegExp(`Retention \\(days\\): ${current.scanRetentionDays} → ${retention}`));
+      assert.match(entry.details!, /Maintenance mode: (on → off|off → on)/);
+      assert.match(entry.details!, /Announcement: \(none\) → "Exams week"/);
+      const beforeSame = await count();
+      assert.equal((await call('/admin/settings', 'PUT', { scanRetentionDays: retention }, operator.cookie)).status, 200);
+      assert.equal(await count(), beforeSame, 'saving unchanged settings is not logged');
+      // Restore maintenance so later tests can scan.
+      await call('/admin/settings', 'PUT', { maintenance: current.maintenance, announcement: '' }, operator.cookie);
+
+      // A failed change leaves no audit entry (the change and its record share a transaction).
+      const beforeFail = await count();
+      assert.equal((await call('/admin/domains/not-on-any-list.example', 'DELETE', undefined, operator.cookie)).status, 404);
+      assert.equal(await count(), beforeFail);
+
+      // Exporting the log is itself recorded, and spreadsheet formulas are neutralised.
+      await pool.query(`INSERT INTO admin_audit(actor_id, action, details) VALUES($1, 'test_formula', '=HYPERLINK("x")')`, [operator.id]);
+      const csv = await (await call('/admin/audit?format=csv', 'GET', undefined, operator.cookie)).text();
+      assert.match(csv, /time,actor,target,action,reason,details/);
+      assert.match(csv, /"'=HYPERLINK\(""x""\)"/);
+      assert.match(csv, /add_domain/);
+      entry = await latest();
+      assert.equal(entry.action, 'export_audit'); assert.match(entry.details!, /^\d+ entr(y|ies)$/);
+      await pool.query("DELETE FROM admin_audit WHERE action = 'test_formula'");
+    });
     await t.test('admin overview reports aggregate stats and provider health without message content', async () => {
       await pool.query(
         `INSERT INTO scans(id, user_id, input_type, input_text, state, analysis, threat_intel, incomplete)

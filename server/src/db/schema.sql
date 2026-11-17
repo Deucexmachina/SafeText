@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS admin_audit (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE admin_audit ADD COLUMN IF NOT EXISTS reason TEXT;
+-- Domain, settings and export actions have no target account; details records what changed.
+ALTER TABLE admin_audit ALTER COLUMN target_id DROP NOT NULL;
+ALTER TABLE admin_audit ADD COLUMN IF NOT EXISTS details TEXT;
 
 -- Runtime-tunable knobs set from the admin UI; absent keys fall back to env config.
 CREATE TABLE IF NOT EXISTS settings (

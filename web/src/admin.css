@@ -417,3 +417,10 @@
   .ad-panel-area { animation: ap-fade 0.2s ease-out; }
   .ad-bar { animation: ap-fill 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; transform-origin: left; }
 }
+
+/* Audit log: what changed for domain / settings / export entries */
+.ad-audit-detail { display: block; max-width: 360px; font-size: 14px; color: var(--lp-heading); overflow-wrap: anywhere; }
+.ad .ad-audit-detail li { padding-left: 12px; position: relative; }
+.ad .ad-audit-detail li + li { margin-top: 2px; }
+.ad .ad-audit-detail li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 4px; height: 4px; border-radius: 50%; background: var(--lp-muted); }
+.ad-card .ad-audit-detail { max-width: none; }

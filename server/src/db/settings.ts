@@ -33,10 +33,10 @@ export async function runtimeSettings(client?: PoolClient): Promise<RuntimeSetti
   };
 }
 
-export async function saveSettings(entries: Record<string, string>): Promise<void> {
+export async function saveSettings(entries: Record<string, string>, client?: PoolClient): Promise<void> {
   for (const [key, value] of Object.entries(entries)) {
     if (!KEYS.includes(key as (typeof KEYS)[number])) continue;
-    await pool.query(
+    await (client ?? pool).query(
       "INSERT INTO settings(key, value, updated_at) VALUES($1, $2, now()) ON CONFLICT(key) DO UPDATE SET value = $2, updated_at = now()",
       [key, value],
     );

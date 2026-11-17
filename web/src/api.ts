@@ -189,7 +189,9 @@ export function saveAdminSettings(body: Partial<AdminSettings>) {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
 }
-export interface AuditEntry { id: number; actorEmail: string; targetEmail: string; action: string; reason: string | null; createdAt: string }
+// targetEmail is null for actions that don't affect an account (domains, settings,
+// exports); details then says what changed, e.g. "Retention (days): 30 → 14".
+export interface AuditEntry { id: number; actorEmail: string; targetEmail: string | null; action: string; reason: string | null; details: string | null; createdAt: string }
 export function listAudit(offset = 0) {
   return request<{ audit: AuditEntry[] }>(`/api/v1/admin/audit?limit=20&offset=${offset}`);
 }

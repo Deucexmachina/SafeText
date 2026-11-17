@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/pool.js';
 import { config } from '../../config.js';
-import { runtimeSettings, saveSettings } from '../../db/settings.js';
+import { runtimeSettings, saveSettings, type RuntimeSettings } from '../../db/settings.js';
 import { normalizeDomain } from '../../domain/domainLists.js';
 import { requireAdmin, verifyPassword } from '../auth.js';
 import { HttpError } from '../problem.js';
@@ -27,6 +28,17 @@ function pagination(query: Record<string, unknown>): { limit: number; offset: nu
 
 // Escaped for a literal ILIKE match so % and _ in the search text stay literal.
 const likeEscape = (value: string) => value.replace(/[\\%_]/g, ch => `\\${ch}`);
+
+/* Every admin change is written to admin_audit, inside the same transaction as
+   the change itself, so nothing changes without a record. targetId names an
+   affected account (if any); details says what changed (domains, settings). */
+async function recordAudit(db: Pick<PoolClient, 'query'>, actorId: string, action: string,
+  entry: { targetId?: string | null; reason?: string | null; details?: string | null } = {}): Promise<void> {
+  await db.query('INSERT INTO admin_audit(actor_id, target_id, action, reason, details) VALUES($1, $2, $3, $4, $5)',
+    [actorId, entry.targetId ?? null, action, entry.reason ?? null, entry.details ?? null]);
+}
+
+const LIST_LABELS: Record<string, string> = { block: 'Blocklist', allow: 'Allowlist' };
 
 adminRouter.get('/users', async (req, res, next) => {
   try {
@@ -96,8 +108,8 @@ adminRouter.patch('/users/:id', async (req, res, next) => {
         [req.params.id, req.body.disabled, req.body.disabled ? reason : null]);
       // Re-enabling never restores revoked sessions.
       await client.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
-      await client.query('INSERT INTO admin_audit(actor_id, target_id, action, reason) VALUES($1, $2, $3, $4)',
-        [req.user!.id, req.params.id, req.body.disabled ? 'disable_user' : 'enable_user', reason || null]);
+      await recordAudit(client, req.user!.id, req.body.disabled ? 'disable_user' : 'enable_user',
+        { targetId: req.params.id, reason: reason || null });
       await client.query('COMMIT');
       res.json({ ok: true });
     } catch (err) { await client.query('ROLLBACK'); throw err; }
@@ -116,8 +128,7 @@ adminRouter.post('/users/:id/force-logout', async (req, res, next) => {
       if (!rows[0]) throw new HttpError(404, 'Account not found', 'The account does not exist.');
       if (rows[0].role === 'admin') throw new HttpError(403, 'Access denied', 'The administrator cannot be logged out here.');
       await client.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
-      await client.query('INSERT INTO admin_audit(actor_id, target_id, action) VALUES($1, $2, $3)',
-        [req.user!.id, req.params.id, 'force_logout']);
+      await recordAudit(client, req.user!.id, 'force_logout', { targetId: req.params.id });
       await client.query('COMMIT');
       res.json({ ok: true });
     } catch (err) { await client.query('ROLLBACK'); throw err; }
@@ -126,17 +137,17 @@ adminRouter.post('/users/:id/force-logout', async (req, res, next) => {
 });
 
 interface AuditRow {
-  id: number; actorEmail: string; targetEmail: string;
-  action: string; reason: string | null; createdAt: Date;
+  id: number; actorEmail: string; targetEmail: string | null;
+  action: string; reason: string | null; details: string | null; createdAt: Date;
 }
 
 async function auditRows(limit: number, offset: number): Promise<AuditRow[]> {
   const { rows } = await pool.query<AuditRow>(
     `SELECT aa.id, actor.email AS "actorEmail", target.email AS "targetEmail",
-       aa.action, aa.reason, aa.created_at AS "createdAt"
+       aa.action, aa.reason, aa.details, aa.created_at AS "createdAt"
      FROM admin_audit aa
      JOIN users actor ON actor.id = aa.actor_id
-     JOIN users target ON target.id = aa.target_id
+     LEFT JOIN users target ON target.id = aa.target_id
      ORDER BY aa.created_at DESC, aa.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
   return rows;
 }
@@ -196,9 +207,15 @@ adminRouter.get('/audit', async (req, res, next) => {
   try {
     if (req.query.format === 'csv') {
       const rows = await auditRows(5000, 0);
-      const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-      const lines = ['time,actor,target,action,reason',
-        ...rows.map(r => [r.createdAt.toISOString(), r.actorEmail, r.targetEmail, r.action, r.reason ?? ''].map(csvCell).join(','))];
+      // Exporting the log is itself recorded (it hands account emails to a file).
+      await recordAudit(pool, req.user!.id, 'export_audit', { details: `${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}` });
+      // Cells starting with =, +, - or @ would run as formulas in Excel, so they get a leading '.
+      const csvCell = (value: unknown) => {
+        const text = String(value ?? '');
+        return `"${(/^[=+\-@]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`;
+      };
+      const lines = ['time,actor,target,action,reason,details',
+        ...rows.map(r => [r.createdAt.toISOString(), r.actorEmail, r.targetEmail ?? '', r.action, r.reason ?? '', r.details ?? ''].map(csvCell).join(','))];
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="safetext-audit.csv"');
       // BOM lets Excel open the UTF-8 CSV with correct encoding.
@@ -226,19 +243,40 @@ adminRouter.post("/domains", async (req, res, next) => {
     if (list !== "block" && list !== "allow") throw new HttpError(400, "Invalid request", "list must be block or allow.");
     const domain = normalizeDomain(String(req.body?.domain ?? ""));
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) throw new HttpError(400, "Invalid request", "Enter a domain like gcash.com.");
-    const { rows: [row] } = await pool.query(
-      `INSERT INTO domain_lists(domain, list, added_by) VALUES($1, $2, $3)
-       ON CONFLICT(domain) DO UPDATE SET list = $2, added_by = $3 RETURNING domain, list, created_at`,
-      [domain, list, req.user!.id]);
-    res.json(row);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: [previous] } = await client.query<{ list: string }>(
+        'SELECT list FROM domain_lists WHERE domain = $1 FOR UPDATE', [domain]);
+      const { rows: [row] } = await client.query(
+        `INSERT INTO domain_lists(domain, list, added_by) VALUES($1, $2, $3)
+         ON CONFLICT(domain) DO UPDATE SET list = $2, added_by = $3 RETURNING domain, list, created_at`,
+        [domain, list, req.user!.id]);
+      // Re-adding a domain to the list it is already on changes nothing, so it is not logged.
+      if (!previous) await recordAudit(client, req.user!.id, 'add_domain', { details: `${domain} → ${LIST_LABELS[list]}` });
+      else if (previous.list !== list) {
+        await recordAudit(client, req.user!.id, 'move_domain', { details: `${domain}: ${LIST_LABELS[previous.list]} → ${LIST_LABELS[list]}` });
+      }
+      await client.query('COMMIT');
+      res.json(row);
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
   } catch (err) { next(err); }
 });
 
 adminRouter.delete("/domains/:domain", async (req, res, next) => {
   try {
-    const { rowCount } = await pool.query("DELETE FROM domain_lists WHERE domain = $1", [req.params.domain]);
-    if (!rowCount) throw new HttpError(404, "Domain not found", "It is not on any list.");
-    res.json({ ok: true });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: [removed] } = await client.query<{ list: string }>(
+        "DELETE FROM domain_lists WHERE domain = $1 RETURNING list", [req.params.domain]);
+      if (!removed) throw new HttpError(404, "Domain not found", "It is not on any list.");
+      await recordAudit(client, req.user!.id, 'remove_domain', { details: `${req.params.domain} (was on the ${LIST_LABELS[removed.list]})` });
+      await client.query('COMMIT');
+      res.json({ ok: true });
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
   } catch (err) { next(err); }
 });
 
@@ -288,7 +326,41 @@ adminRouter.put("/settings", async (req, res, next) => {
       }
       entries.announcement = b.announcement;
     }
-    await saveSettings(entries);
-    res.json(await runtimeSettings());
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const before = await runtimeSettings(client);
+      await saveSettings(entries, client);
+      const after = await runtimeSettings(client);
+      // Record only what actually changed, as "Label: before → after".
+      const changes = settingChanges(before, after);
+      if (changes.length) await recordAudit(client, req.user!.id, 'update_settings', { details: changes.join('; ') });
+      await client.query('COMMIT');
+      res.json(after);
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
   } catch (err) { next(err); }
 });
+
+const SETTING_LABELS: Record<keyof RuntimeSettings, string> = {
+  scansPer15Min: 'Scans per 15 minutes',
+  maxScansPerUser: 'Scans kept per account',
+  scanRetentionDays: 'Retention (days)',
+  maxUploadMb: 'Max upload (MB)',
+  maintenance: 'Maintenance mode',
+  announcement: 'Announcement',
+};
+
+function settingChanges(before: RuntimeSettings, after: RuntimeSettings): string[] {
+  const show = (key: keyof RuntimeSettings, value: RuntimeSettings[keyof RuntimeSettings]) => {
+    if (key === 'maintenance') return value ? 'on' : 'off';
+    if (key === 'announcement') {
+      const text = String(value);
+      return text ? `"${text.length > 80 ? `${text.slice(0, 80)}…` : text}"` : '(none)';
+    }
+    return String(value);
+  };
+  return (Object.keys(SETTING_LABELS) as (keyof RuntimeSettings)[])
+    .filter(key => before[key] !== after[key])
+    .map(key => `${SETTING_LABELS[key]}: ${show(key, before[key])} → ${show(key, after[key])}`);
+}
