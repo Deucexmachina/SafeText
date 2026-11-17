@@ -675,6 +675,12 @@
 /* Accessibility: adjustable text size                                 */
 /* ------------------------------------------------------------------ */
 
+/* Keep the scrollbar gutter reserved so zoom changes don't resize the
+   viewport width (the flicker seen on desktop while dragging). */
+html {
+  scrollbar-gutter: stable;
+}
+
 .ap-menu-slider {
   cursor: default;
 }

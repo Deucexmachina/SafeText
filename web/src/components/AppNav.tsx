@@ -77,7 +77,10 @@ export function AppNav({ email, isAdmin, theme, onToggleTheme, showThemeToggle, 
               <Link to="/account" className="ap-menu-item" onClick={() => setOpen(false)}>
                 <IconUser /><span>Account</span>
               </Link>
-              <div className="ap-menu-item ap-menu-slider">
+              {/* Inverse zoom keeps this control a constant size while the
+                  page scales behind it — otherwise the thumb oscillates
+                  under the cursor mid-drag on desktop. */}
+              <div className="ap-menu-item ap-menu-slider" style={{ zoom: `${TEXT_MIN / textSize}` }}>
                 <IconTextSize /><span>Text size</span>
                 <label className="ap-slider-wrap">
                   <span className="visually-hidden">Text size</span>
