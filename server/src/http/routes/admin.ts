@@ -5,9 +5,13 @@ import { runtimeSettings, saveSettings } from '../../db/settings.js';
 import { normalizeDomain } from '../../domain/domainLists.js';
 import { requireAdmin, verifyPassword } from '../auth.js';
 import { HttpError } from '../problem.js';
+import { clientAddress } from '../clientIp.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAdmin);
+adminRouter.get('/network', (req, res) => res.json({
+  ...clientAddress(req), configuredSource: config.clientIpSource,
+}));
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -46,6 +50,8 @@ adminRouter.get('/users', async (req, res, next) => {
       `SELECT u.id, u.email, u.role, u.disabled, u.disabled_reason AS "disabledReason",
          u.created_at AS "createdAt", u.last_login_at AS "lastLoginAt", u.last_active_at AS "lastActiveAt",
          u.failed_logins AS "failedLogins", u.scan_rate_hits AS "scanRateHits",
+         u.auth_rate_hits AS "authRateHits", u.reset_rate_hits AS "resetRateHits", u.api_rate_hits AS "apiRateHits",
+         LEAST(2147483647, u.scan_rate_hits::bigint + u.auth_rate_hits + u.reset_rate_hits + u.api_rate_hits)::int AS "rateLimitHits",
          (SELECT count(*)::int FROM scans s WHERE s.user_id = u.id) AS "scanCount"
        FROM users u ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        ORDER BY u.created_at, u.id LIMIT $${params.length - 1} OFFSET $${params.length}`, params);

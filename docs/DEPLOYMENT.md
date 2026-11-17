@@ -212,10 +212,8 @@ avoid deploying during active scans because restarts can interrupt jobs and
 recovery can repeat provider work. Multi-instance processing requires additional
 job coordination before scaling.
 
-The app currently uses the direct connection IP for authentication throttling.
-Behind a hosting proxy, visitors can share the 20-attempt login/registration
-bucket for 15 minutes. Validate the host's proxy chain and configure trusted
-proxies before wider campus use; do not enable unrestricted `trust proxy`.
+For the public Render service, set `CLIENT_IP_SOURCE=render` as described below
+so rate limits use the visitor's client IP. Keep `socket` for local development.
 
 ## Verify the deployed website
 
@@ -267,6 +265,69 @@ physical size and restore history may not drop immediately. Do not disable TLS
 or run `VACUUM FULL` as a routine fix. These application limits leave headroom
 but do not guarantee that hosting quotas or API budgets can never be exceeded.
 
+## Configure rate limits on Render
+
+1. Commit and push the rate-limit update to `main`; wait for GitHub CI to pass.
+2. In **Render > safetext-nano > Environment**, add:
+
+   | Key | Value |
+   | --- | --- |
+   | `CLIENT_IP_SOURCE` | `render` |
+
+   The Blueprint includes this setting. If the service was created manually,
+   add it in the Dashboard; pushing YAML alone does not update a manual service.
+   Render supplies `RENDER=true` automatically. Do not add or change that platform
+   variable yourself. Keep `CLIENT_IP_SOURCE=socket` in your local `server/.env`.
+   [Render platform variables](https://render.com/docs/environment-variables).
+3. Leave the remaining settings unset to use the defaults. For explicit control
+   later, the main optional values are:
+
+   | Key | Default |
+   | --- | --- |
+   | `API_RATE_LIMIT_PER_MINUTE` | `300` |
+   | `RESET_REQUESTS_PER_HOUR_PER_IP` | `20` |
+   | `RESET_REQUESTS_PER_HOUR_PER_EMAIL` | `5` |
+   | `RESET_RESEND_COOLDOWN_SECONDS` | `60` |
+   | `RESET_MAX_CODE_ATTEMPTS` | `8` |
+   | `RESET_PASSWORD_ATTEMPTS_PER_MINUTE` | `5` |
+
+   Login/verification and scan defaults are listed in the README's **Request rate
+   limits** section and `server/.env.example`. Values must be positive integers;
+   zero is not a disable switch. A saved admin scan limit takes precedence over
+   `SCAN_RATE_LIMIT_PER_15_MIN`. Users behind the same public IP share IP quotas;
+   choose higher IP limits if legitimate group/campus use needs them.
+   For the team's policy, explicitly set `RESET_REQUESTS_PER_HOUR_PER_EMAIL=5`
+   and `RESET_PASSWORD_ATTEMPTS_PER_MINUTE=5`. Remove the obsolete
+   `RESET_MAX_PER_DAY` variable if present; the three-resets-per-day rule no
+   longer applies. Rapid resend clicks count toward the hourly request limit.
+4. Leave `BREVO_API_KEY`, `EMAIL_FROM`, `DATABASE_URL`, `APP_ORIGIN`, and the OCR/
+   analysis keys unchanged. No Redis account, extra hosting service, or manual
+   Neon SQL is needed. The new admin counter columns migrate automatically.
+5. Choose **Save, rebuild, and deploy** and wait for **Live**.
+6. While signed in as the SafeText admin, open
+   <https://safetext-nano.onrender.com/api/v1/admin/network>.
+   Confirm `configuredSource` and `source` both say `render`. The returned `ip`
+   should match your browser connection's public address. A non-admin gets 403.
+   Render documents that its public Cloudflare edge overwrites the selected
+   header; the app does not trust caller-provided X-Forwarded-For chains.
+   [Render client IP behavior](https://render.com/articles/host-pocketbase-on-render).
+7. In a logged-out/private browser, request a reset code for your own registered
+   account. An immediate second request should be blocked until the countdown
+   ends. Use the original code to finish the reset; do not repeatedly request
+   emails just to test the hourly quota. Automated tests cover quota boundaries
+   using mocked email delivery.
+8. Check **Admin > Accounts > Rate hits**. A blocked email-targeted reset request
+   increments the reset category. The tooltip breaks down scans, login, reset,
+   and general API hits. Counts are cumulative and are signals for review, not
+   proof the account owner caused the traffic. Anonymous IP blocks are not
+   attributed to arbitrary email addresses.
+
+If blocked, wait for the `Retry-After` delay. Restarting or redeploying no longer
+clears scan limits. Avoid clearing the database or raising every limit to work
+around a missing/wrong client-IP setting. If the network check reports `socket`,
+confirm this is the public Render web service, the new variable was deployed,
+and the request uses its public HTTPS URL.
+
 ## Configure password reset email
 
 The Render website address stays `https://safetext-nano.onrender.com`. Email is
@@ -317,9 +378,10 @@ used for the class demo without purchasing a website domain.
    the new password works, the old one fails, and previous sessions are signed out.
 
 Codes are single-use. Wait 60 seconds before resending; the newest code replaces
-older codes. After eight wrong guesses, request another code. Successful resets
-are capped at three per rolling day. An expired code at the password step can
-be replaced using **Request a new code**.
+older codes. After eight wrong guesses, request another code. Reset email requests
+are limited to five per hour per email, and final password submissions to five
+per minute per email. An expired code at the password step can be replaced using
+**Request a new code**. There is no additional daily reset cap.
 
 If the page says **Password reset unavailable**, check that both email variables
 are configured and `EMAIL_FROM` is a real address rather than the `.local` default.
@@ -354,6 +416,41 @@ is not part of command history. The command targets the hosted database because
 the environment variable overrides `server/.env`. Sign in again after promotion;
 promotion revokes existing sessions. Promote only the registered account you
 intend to administer. Keep the database owner connection string private.
+
+## Add the group account as a second administrator
+
+The initial admin stays in place. After deploying the updated schema, register
+`team.nano25@gmail.com` on the live website using a fresh password that has not
+been shared in chat. If it already exists, sign in or use password reset instead
+of creating a replacement account. Sender verification in Brevo does not create
+a SafeText user account.
+
+In **Neon > SQL Editor**, select the same production branch and database used by
+Render. Run the following after the account is registered:
+
+```sql
+BEGIN;
+
+UPDATE users
+SET role = 'admin', disabled = false, disabled_reason = NULL
+WHERE email = 'team.nano25@gmail.com'
+RETURNING email, role;
+
+DELETE FROM sessions
+WHERE user_id IN (
+  SELECT id FROM users WHERE email = 'team.nano25@gmail.com'
+);
+
+COMMIT;
+```
+
+Confirm the UPDATE returns the group email with role `admin`. If it returns no
+rows, check account registration and that Neon is using the right branch/database.
+The new admin signs in again after promotion. This does not reset their password,
+modify the original admin, or revoke the original admin's sessions. The migration
+removes the old single-admin index automatically; do not re-create that index.
+Alternatively, run the existing `admin:grant` command with the group email and
+the hosted database connection as described above.
 
 ## Use a Render subdomain or custom domain
 

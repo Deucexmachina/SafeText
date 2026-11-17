@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { test } from "node:test";
 import { Pool } from "pg";
@@ -35,6 +35,10 @@ test("password reset: emailed code, verify, single-use reset, session revocation
   const codeOf = (mail: { text: string }) => mail.text.match(/code: (\d{6})/)![1];
   const password = "a long test password 123";
   const newPassword = "an even longer new password 456";
+  async function expireCooldown(email: string) {
+    await pool.query("UPDATE auth_attempts SET window_start = now() - interval '2 minutes' WHERE key_hash = $1",
+      [createHash('sha256').update(`reset-cooldown:${email}`).digest('hex')]);
+  }
   try {
     await migrate();
     const email = "reset@example.com";
@@ -60,7 +64,9 @@ test("password reset: emailed code, verify, single-use reset, session revocation
     assert(row.expires_at.getTime() > Date.now() && row.expires_at.getTime() <= Date.now() + 5 * 60 * 1000);
 
     // A resend inside the cooldown does not rotate the code or email again.
-    assert.equal((await call("/auth/forgot-password", "POST", { email })).status, 200);
+    const coolingDown = await call("/auth/forgot-password", "POST", { email });
+    assert.equal(coolingDown.status, 429);
+    assert(Number(coolingDown.headers.get('retry-after')) > 0);
     assert.equal(outbox.sent.length, sentBefore + 1);
     assert.equal((await pool.query("SELECT count(*)::int AS c FROM password_resets")).rows[0].c, 1);
 
@@ -83,26 +89,23 @@ test("password reset: emailed code, verify, single-use reset, session revocation
     const { rows: [user] } = await pool.query<{ password_hash: string }>("SELECT password_hash FROM users WHERE email = $1", [email]);
     assert.notEqual(user.password_hash, newPassword);
 
-    // The same account can reset at most 3 times per rolling day. This user
-    // already spent one reset above; two more succeed, the fourth is refused.
+    // The current policy is five final attempts per minute, with no old daily cap.
     await pool.query("DELETE FROM auth_attempts");
     for (const cycle of [2, 3, 4]) {
+      await expireCooldown(email);
       await pool.query("UPDATE password_resets SET created_at = now() - interval '2 minutes'");
       assert.equal((await call("/auth/forgot-password", "POST", { email })).status, 200);
       const cycleCode = codeOf(outbox.sent.at(-1)!);
       const attempt = await call("/auth/reset-password", "POST",
         { email, code: cycleCode, password: `replacement password ${cycle}` });
-      if (cycle <= 3) assert.equal(attempt.status, 200);
-      else {
-        assert.equal(attempt.status, 429);
-        assert(Number(attempt.headers.get("retry-after")) > 0);
-      }
+      assert.equal(attempt.status, 200);
     }
-    assert.equal((await call("/auth/login", "POST", { email, password: "replacement password 3" })).status, 200);
-    assert.equal((await call("/auth/login", "POST", { email, password: "replacement password 4" })).status, 401);
+    assert.equal((await call("/auth/login", "POST", { email, password: "replacement password 4" })).status, 200);
+    assert.equal((await call("/auth/login", "POST", { email, password: "replacement password 3" })).status, 401);
 
-    // Once the rolling day passes, resets are allowed again.
-    await pool.query("UPDATE users SET password_reset_window = now() - interval '2 days' WHERE email = $1", [email]);
+    // Legacy daily counters do not override the new request-based policy.
+    await pool.query("UPDATE users SET password_reset_count = 999, password_reset_window = now() WHERE email = $1", [email]);
+    await expireCooldown(email);
     await pool.query("UPDATE password_resets SET created_at = now() - interval '2 minutes'");
     assert.equal((await call("/auth/forgot-password", "POST", { email })).status, 200);
     const rolledCode = codeOf(outbox.sent.at(-1)!);
@@ -146,7 +149,7 @@ test("password reset: emailed code, verify, single-use reset, session revocation
       await pool.query('DELETE FROM password_resets');
       const before = outbox.sent.length;
       const requests = await Promise.all([1, 2].map(() => call('/auth/forgot-password', 'POST', { email })));
-      assert(requests.every(response => response.status === 200));
+      assert.deepEqual(requests.map(response => response.status).sort(), [200, 429]);
       assert.equal(outbox.sent.length, before + 1);
       const current = codeOf(outbox.sent.at(-1)!);
       const wrong = current === '000000' ? '000001' : '000000';
@@ -157,7 +160,7 @@ test("password reset: emailed code, verify, single-use reset, session revocation
       assert.equal((await call('/auth/reset-password', 'POST', { email, code: current, password })).status, 400);
     });
 
-    await t.test('delivery failure removes only its undelivered code, logs no secrets, and allows retry', async () => {
+    await t.test('delivery failure removes only its undelivered code, logs no secrets, and allows retry after cooldown', async () => {
       await pool.query('DELETE FROM auth_attempts'); await pool.query('DELETE FROM password_resets');
       const originalSend = emailSender.sendPasswordResetCode;
       const originalWarn = console.warn;
@@ -172,6 +175,7 @@ test("password reset: emailed code, verify, single-use reset, session revocation
         assert(!JSON.stringify(warnings).includes(failedCode));
       } finally { emailSender.sendPasswordResetCode = originalSend; console.warn = originalWarn; }
       const before = outbox.sent.length;
+      await expireCooldown(email);
       assert.equal((await call('/auth/forgot-password', 'POST', { email })).status, 200);
       assert.equal(outbox.sent.length, before + 1);
       const current = codeOf(outbox.sent.at(-1)!);
@@ -201,6 +205,7 @@ test("password reset: emailed code, verify, single-use reset, session revocation
       const requests = await Promise.all([1, 2].map(() => call('/auth/reset-password', 'POST', { email, code: current, password: newPassword })));
       assert.deepEqual(requests.map(response => response.status).sort(), [200, 400]);
       await pool.query("UPDATE password_resets SET created_at = now() - interval '2 minutes'");
+      await expireCooldown(email);
       await call('/auth/forgot-password', 'POST', { email });
       const disabledCode = codeOf(outbox.sent.at(-1)!);
       await pool.query('UPDATE users SET disabled = true WHERE email = $1', [email]);

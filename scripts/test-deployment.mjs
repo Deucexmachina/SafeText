@@ -29,7 +29,7 @@ try {
     env: { ...process.env, DATABASE_URL: url.href, PORT: String(port),
       NODE_ENV: 'production', APP_ORIGIN: 'https://safetext.example', SERVE_WEB: 'true',
       KIMI_API_KEY: '', LLM_WHISPERER_API_KEY: '', GOOGLE_SAFE_BROWSING_API_KEY: '',
-      BREVO_API_KEY: '', SMTP_URL: '', EMAIL_DEV_LOG: '' },
+      BREVO_API_KEY: '', SMTP_URL: '', EMAIL_DEV_LOG: '', CLIENT_IP_SOURCE: 'socket' },
   });
   exited = once(child, 'exit');
   const base = `http://127.0.0.1:${port}`;

@@ -18,11 +18,18 @@ export function useScan(scanId: string | null) {
         const s = await getScan(scanId);
         if (cancelled) return;
         setScan(s);
+        setError(null);
         if (s.status === "RUNNING") {
           timer = window.setTimeout(tick, 2000);
         }
       } catch (e) {
         if (!cancelled) {
+          if (e instanceof ApiError && e.status === 429) {
+            setError(e.detail);
+            // A temporary request limit should not permanently strand a running scan.
+            timer = window.setTimeout(tick, Math.max(1, e.retryAfter ?? 60) * 1000);
+            return;
+          }
           setError(
             e instanceof ApiError ? e.detail : "Couldn't load the scan result.",
           );

@@ -21,7 +21,25 @@ function positiveInteger(name: string, fallback: number, maximum: number): numbe
   return value;
 }
 
+const clientIpSource = process.env.CLIENT_IP_SOURCE ?? 'socket';
+if (!['socket', 'render'].includes(clientIpSource)) throw new Error('CLIENT_IP_SOURCE must be socket or render.');
+if (clientIpSource === 'render' && process.env.RENDER !== 'true') {
+  throw new Error('CLIENT_IP_SOURCE=render is only supported on a public Render web service. Use socket locally.');
+}
+
 export const config = {
+  clientIpSource,
+  apiRateLimitPerMinute: positiveInteger('API_RATE_LIMIT_PER_MINUTE', 300, 100000),
+  authRateLimitPerIp: positiveInteger('AUTH_RATE_LIMIT_PER_IP', 100, 10000),
+  authRateLimitPerEmail: positiveInteger('AUTH_RATE_LIMIT_PER_EMAIL', 20, 1000),
+  resetRequestsPerHourPerIp: positiveInteger('RESET_REQUESTS_PER_HOUR_PER_IP', 20, 1000),
+  resetRequestsPerHourPerEmail: positiveInteger('RESET_REQUESTS_PER_HOUR_PER_EMAIL', 5, 100),
+  resetVerifyPer15MinPerIp: positiveInteger('RESET_VERIFY_PER_15_MIN_PER_IP', 100, 10000),
+  resetVerifyPer15MinPerEmail: positiveInteger('RESET_VERIFY_PER_15_MIN_PER_EMAIL', 20, 1000),
+  resetPasswordAttemptsPerMinute: positiveInteger('RESET_PASSWORD_ATTEMPTS_PER_MINUTE', 5, 100),
+  resetResendCooldownSeconds: positiveInteger('RESET_RESEND_COOLDOWN_SECONDS', 60, 3600),
+  resetMaxCodeAttempts: positiveInteger('RESET_MAX_CODE_ATTEMPTS', 8, 20),
+  scanRateLimitPer15Min: positiveInteger('SCAN_RATE_LIMIT_PER_15_MIN', 20, 200),
   scanRetentionDays: positiveInteger('SCAN_RETENTION_DAYS', 30, 3650),
   maxScansPerUser: positiveInteger('MAX_SCANS_PER_USER', 100, 100000),
   maxStoredScans: positiveInteger('MAX_STORED_SCANS', 1000, 1000000),

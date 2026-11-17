@@ -24,7 +24,7 @@ export async function runtimeSettings(client?: PoolClient): Promise<RuntimeSetti
     "SELECT key, value FROM settings WHERE key = ANY($1)", [[...KEYS]]);
   const stored = Object.fromEntries(rows.map(r => [r.key, r.value]));
   return {
-    scansPer15Min: asInt(stored.scans_per_15min, 20),
+    scansPer15Min: asInt(stored.scans_per_15min, config.scanRateLimitPer15Min),
     maxScansPerUser: asInt(stored.max_scans_per_user, config.maxScansPerUser),
     scanRetentionDays: asInt(stored.scan_retention_days, config.scanRetentionDays),
     maxUploadMb: asInt(stored.max_upload_mb, 8),

@@ -16,7 +16,6 @@ try {
     console.log('Admin access granted. Log in again to use the Admin tab.');
   } catch (err) {
     await client.query('ROLLBACK');
-    if ((err as { code?: string }).code === '23505') throw new Error('An administrator already exists. No account permissions were changed.');
     throw err;
   } finally { client.release(); }
 } catch (err) {

@@ -9,6 +9,7 @@ import { scansRouter } from "./http/routes/scans.js";
 import { HttpError, sendProblem } from "./http/problem.js";
 import { authRouter, checkOrigin, requireAuth } from "./http/auth.js";
 import { adminRouter } from "./http/routes/admin.js";
+import { apiLimiter, recordRateHit } from './http/rateLimits.js';
 
 export function createApp() {
   const app = express();
@@ -17,6 +18,7 @@ export function createApp() {
     throw new Error("SERVE_WEB requires a frontend build. Run npm run build first.");
   }
   app.disable("x-powered-by");
+  app.set('trust proxy', false);
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -26,10 +28,11 @@ export function createApp() {
     res.setHeader('Cache-Control', 'no-store');
     next();
   });
+  app.use('/api/v1', (req, res, next) => req.path === '/health' && ['GET', 'HEAD'].includes(req.method) ? next() : apiLimiter(req, res, next));
   app.use(express.json({ limit: "64kb" }));
   app.use("/api/v1", checkOrigin);
   app.use('/api/v1', (req, _res, next) => {
-    if (req.path === '/health') return next();
+    if (req.path === '/health' && ['GET', 'HEAD'].includes(req.method)) return next();
     void maintainStorage().then(() => next(), next);
   });
 
@@ -73,11 +76,18 @@ export function createApp() {
   app.use(
     (
       err: unknown,
-      _req: express.Request,
+      req: express.Request,
       res: express.Response,
       _next: express.NextFunction,
     ) => {
       if (err instanceof HttpError) {
+        if (err.status === 429) {
+          if (!res.hasHeader('Retry-After')) res.setHeader('Retry-After', '60');
+          const recorded = req.path === '/api/v1/scan' ? recordRateHit(req, 'scan')
+            : req.path === '/api/v1/auth/reset-password' ? recordRateHit(req, 'reset', true) : Promise.resolve();
+          void recorded.then(() => sendProblem(res, err.status, err.title, err.detail, err.type));
+          return;
+        }
         return sendProblem(res, err.status, err.title, err.detail, err.type);
       }
       if (err instanceof multer.MulterError) {

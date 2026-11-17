@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { forgotPassword, resetPassword, verifyResetCode } from "../api";
+import { ApiError, forgotPassword, resetPassword, verifyResetCode } from "../api";
 import { PasswordInput } from "../components/PasswordInput";
 import { SiteNav, svgIcon, useSiteTheme } from "../components/SiteNav";
 import "../landing.css";
@@ -51,9 +51,9 @@ function ErrorMessage({ id, children }: { id: string; children: ReactNode }) {
   return <p id={id} role="alert" className="rc-alert rc-alert-error"><IconAlert /><span>{children}</span></p>;
 }
 
-function SubmitButton({ busy, busyLabel, children }: { busy: boolean; busyLabel: string; children: ReactNode }) {
+function SubmitButton({ busy, busyLabel, children, disabled = false }: { busy: boolean; busyLabel: string; children: ReactNode; disabled?: boolean }) {
   return (
-    <button className="lp-btn lp-btn-primary lp-btn-lg rc-submit" disabled={busy} aria-busy={busy}>
+    <button className="lp-btn lp-btn-primary lp-btn-lg rc-submit" disabled={busy || disabled} aria-busy={busy}>
       {busy ? <><span className="lp-spinner" aria-hidden="true" />{busyLabel}</> : children}
     </button>
   );
@@ -165,6 +165,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
+  const [verifyIn, setVerifyIn] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
   const nav = useNavigate();
   const code = digits.join("");
@@ -174,6 +175,11 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
     const t = window.setTimeout(() => setResendIn((v) => v - 1), 1000);
     return () => window.clearTimeout(t);
   }, [resendIn]);
+  useEffect(() => {
+    if (verifyIn <= 0) return;
+    const timer = window.setTimeout(() => setVerifyIn(value => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [verifyIn]);
 
   useEffect(() => {
     if (step !== "done") return;
@@ -194,14 +200,15 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
     const resending = step !== "email";
     setBusy(true);
     try {
-      await forgotPassword(email.trim());
+      const result = await forgotPassword(email.trim());
       setStep("code");
       setDigits(emptyDigits());
       setPassword("");
       setConfirm("");
-      setResendIn(60);
+      setResendIn(result.resendAfter ?? 60);
       if (resending) setNotice("If an account exists for this email, we've sent a new code. Only the newest code will work.");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 429) setResendIn(err.retryAfter ?? 60);
       setError(message(err));
     } finally {
       setBusy(false);
@@ -219,6 +226,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
       setPassword("");
       setConfirm("");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 429) setVerifyIn(err.retryAfter ?? 60);
       setError(message(err));
       setDigits(emptyDigits());
       window.setTimeout(() => cardRef.current?.querySelector<HTMLElement>("#code")?.focus(), 0);
@@ -243,6 +251,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
       await resetPassword(email.trim(), code.trim(), password);
       setStep("done");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 429) setVerifyIn(err.retryAfter ?? 60);
       setError(message(err));
     } finally {
       setBusy(false);
@@ -254,7 +263,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
   const matches = confirm.length > 0 && password === confirm;
   const resendButton = (label: string) => (
     <button type="button" className="rc-link" disabled={busy || resendIn > 0} onClick={() => void requestCode()}>
-      {resendIn > 0 ? <>{label} in <span className="rc-countdown">0:{String(resendIn).padStart(2, "0")}</span></> : label}
+      {resendIn > 0 ? <>{label} in <span className="rc-countdown">{Math.floor(resendIn / 60)}:{String(resendIn % 60).padStart(2, "0")}</span></> : label}
     </button>
   );
 
@@ -290,7 +299,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
                   />
                   <p id="email-hint" className="rc-hint">Use the email you signed up with, like name@example.com.</p>
                   {error && <ErrorMessage id="rc-error">{error}</ErrorMessage>}
-                  <SubmitButton busy={busy} busyLabel="Sending code…">Send reset code</SubmitButton>
+                  <SubmitButton busy={busy} disabled={resendIn > 0} busyLabel="Sending code…">{resendIn > 0 ? `Try again in ${resendIn}s` : 'Send reset code'}</SubmitButton>
                   <p className="rc-fine">The code expires 5 minutes after it's sent.</p>
                 </form>
               </>
@@ -308,11 +317,11 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
                   <CodeBoxes digits={digits} onChange={setDigits} disabled={busy} invalid={!!error} describedBy={error ? "rc-error" : undefined} />
                   {error && <ErrorMessage id="rc-error">{error}</ErrorMessage>}
                   {notice && <p role="status" className="rc-alert rc-alert-info"><IconInfo /><span>{notice}</span></p>}
-                  <SubmitButton busy={busy} busyLabel="Checking code…">Verify code</SubmitButton>
+                  <SubmitButton busy={busy} disabled={verifyIn > 0} busyLabel="Checking code…">{verifyIn > 0 ? `Try again in ${verifyIn}s` : 'Verify code'}</SubmitButton>
                 </form>
                 <div className="rc-row rc-row-stack">
                   <p className="rc-row"><span>Didn't get it?</span> {resendButton("Resend code")}</p>
-                  <button type="button" className="rc-link" disabled={busy} onClick={() => { setStep("email"); setError(""); setNotice(""); }}>
+                  <button type="button" className="rc-link" disabled={busy} onClick={() => { setStep("email"); setError(""); setNotice(""); setResendIn(0); setVerifyIn(0); }}>
                     Use a different email
                   </button>
                 </div>
@@ -340,7 +349,7 @@ export function ForgotPasswordPage({ notices }: { notices?: ReactNode }) {
                     <Requirement met={matches} pending={!confirm}>{confirm && !matches ? "Passwords don't match yet" : "Passwords match"}</Requirement>
                   </ul>
                   {error && <ErrorMessage id="rc-error">{error}</ErrorMessage>}
-                  <SubmitButton busy={busy} busyLabel="Saving…">Reset password</SubmitButton>
+                  <SubmitButton busy={busy} disabled={verifyIn > 0} busyLabel="Saving…">{verifyIn > 0 ? `Try again in ${verifyIn}s` : 'Reset password'}</SubmitButton>
                 </form>
                 <div className="rc-row"><span>Code expired?</span> {resendButton("Request a new code")}</div>
               </>
