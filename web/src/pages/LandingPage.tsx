@@ -198,7 +198,7 @@ export function LandingPage({ onLogin, notices }: { onLogin: (user: User) => voi
         {/* 5. Common campus scams */}
         <section id="common-scams" className="lp-section" aria-labelledby="scams-title">
           <div className="lp-wrap">
-            <h2 id="scams-title" className="lp-h2">Common campus scams</h2>
+            <h2 id="scams-title" className="lp-h2">Common scams</h2>
             <p className="lp-sub">Scams like these often target students. Learn the tell-tale sign of each.</p>
             <ul className="lp-grid4">
               {SCAMS.map(s => (
