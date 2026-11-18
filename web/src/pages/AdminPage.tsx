@@ -40,24 +40,24 @@ export function AdminPage() {
   }
 
   return (
-    <div className="ad">
-      <header className="ap-page-head ad-head">
+    <div className="st-admin">
+      <header className="ap-page-head st-admin-head">
         <h1>Admin console</h1>
         <p className="ap-lead">Manage accounts, review reports and keep SafeText running. Each person's messages and scan history remain private.</p>
       </header>
 
-      <div className="ad-layout">
-        <div className="ad-nav" role="tablist" aria-label="Admin sections" aria-orientation="vertical">
+      <div className="st-admin-layout">
+        <div className="st-admin-nav" role="tablist" aria-label="Admin sections" aria-orientation="vertical">
           {VIEWS.map((v, i) => (
             <button key={v.id} ref={el => { tabs.current[i] = el; }} type="button" role="tab" id={`tab-${v.id}`}
               aria-selected={view === v.id} aria-controls={`panel-${v.id}`} tabIndex={view === v.id ? 0 : -1}
-              className="ad-nav-item" onClick={() => select(v.id)} onKeyDown={e => onKeyDown(e, i)}>
+              className="st-admin-nav-item" onClick={() => select(v.id)} onKeyDown={e => onKeyDown(e, i)}>
               {v.icon()}<span>{v.label}</span>
             </button>
           ))}
         </div>
 
-        <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`} className="ad-panel-area" key={view}>
+        <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`} className="st-admin-panel-area" key={view}>
           <current.Panel />
         </div>
       </div>

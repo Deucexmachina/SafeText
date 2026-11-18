@@ -45,13 +45,13 @@ export function ago(date: string | null) {
 
 export function Section({ title, description, actions, children }: { title: string; description?: ReactNode; actions?: ReactNode; children: ReactNode }) {
   return (
-    <section className="ad-section">
-      <header className="ad-section-head">
+    <section className="st-admin-section">
+      <header className="st-admin-section-head">
         <div>
           <h2>{title}</h2>
           {description && <p className="ap-muted">{description}</p>}
         </div>
-        {actions && <div className="ad-section-actions">{actions}</div>}
+        {actions && <div className="st-admin-section-actions">{actions}</div>}
       </header>
       {children}
     </section>
@@ -63,12 +63,12 @@ export function ErrorAlert({ children }: { children: ReactNode }) {
 }
 
 export function Note({ children }: { children: ReactNode }) {
-  return <p className="ad-note">{Icons.info()}<span>{children}</span></p>;
+  return <p className="st-admin-note">{Icons.info()}<span>{children}</span></p>;
 }
 
 export function Loading({ label, rows = 4 }: { label: string; rows?: number }) {
   return (
-    <div className="ad-loading" aria-busy="true">
+    <div className="st-admin-loading" aria-busy="true">
       <p role="status" className="visually-hidden">{label}</p>
       {Array.from({ length: rows }, (_, i) => <div key={i} className="ap-skel-row" aria-hidden="true"><span /><span /><span /></div>)}
     </div>
@@ -76,7 +76,7 @@ export function Loading({ label, rows = 4 }: { label: string; rows?: number }) {
 }
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
-  return <div className="ad-empty"><strong>{title}</strong>{children && <p className="ap-muted">{children}</p>}</div>;
+  return <div className="st-admin-empty"><strong>{title}</strong>{children && <p className="ap-muted">{children}</p>}</div>;
 }
 
 /* Previous / Next paging for offset-based admin lists (the API returns up to PAGE rows). */
@@ -84,7 +84,7 @@ export function Pager({ offset, count, disabled, onPage, label }: { offset: numb
   if (offset === 0 && count < PAGE) return null;
   const from = count ? offset + 1 : offset;
   return (
-    <nav className="ap-pagination ad-pager" aria-label={label}>
+    <nav className="ap-pagination st-admin-pager" aria-label={label}>
       <button type="button" className="ap-page-btn" disabled={disabled || offset === 0} onClick={() => onPage(Math.max(0, offset - PAGE))}>‹ Previous</button>
       <span className="ap-muted">{count ? `Showing ${from}–${offset + count}` : "No more results"}</span>
       <button type="button" className="ap-page-btn" disabled={disabled || count < PAGE} onClick={() => onPage(offset + PAGE)}>Next ›</button>
@@ -95,10 +95,10 @@ export function Pager({ offset, count, disabled, onPage, label }: { offset: numb
 /* KPI tile: label, value, optional status line (icon + text, never colour alone). */
 export function StatTile({ label, value, icon, tone, status }: { label: string; value: number; icon?: ReactNode; tone?: "warn" | "ok"; status?: string }) {
   return (
-    <div className={`ad-stat${tone ? ` is-${tone}` : ""}`}>
-      <div className="ad-stat-label">{icon}<span>{label}</span></div>
-      <div className="ad-stat-value">{value.toLocaleString()}</div>
-      {status && <div className="ad-stat-status">{tone === "warn" ? Icons.alert(14) : Icons.check(14)}<span>{status}</span></div>}
+    <div className={`st-admin-stat${tone ? ` is-${tone}` : ""}`}>
+      <div className="st-admin-stat-label">{icon}<span>{label}</span></div>
+      <div className="st-admin-stat-value">{value.toLocaleString()}</div>
+      {status && <div className="st-admin-stat-status">{tone === "warn" ? Icons.alert(14) : Icons.check(14)}<span>{status}</span></div>}
     </div>
   );
 }
@@ -111,16 +111,16 @@ export function BarTable({ caption, nameLabel, valueLabel, rows, mono }: {
   const sorted = [...rows].sort((a, b) => b.value - a.value);
   const max = Math.max(1, ...sorted.map(r => r.value));
   return (
-    <table className="ad-bars">
+    <table className="st-admin-bars">
       <caption className="visually-hidden">{caption}</caption>
       <thead className="visually-hidden"><tr><th scope="col">{nameLabel}</th><th scope="col">{valueLabel}</th></tr></thead>
       <tbody>
         {sorted.map(r => (
           <tr key={r.name}>
-            <th scope="row" className={mono ? "ad-mono" : undefined}>{r.name}</th>
+            <th scope="row" className={mono ? "st-admin-mono" : undefined}>{r.name}</th>
             <td>
-              <span className="ad-bar-track" aria-hidden="true"><span className="ad-bar" style={{ width: `${(r.value / max) * 100}%` }} /></span>
-              <span className="ad-bar-value">{r.value.toLocaleString()}</span>
+              <span className="st-admin-bar-track" aria-hidden="true"><span className="st-admin-bar" style={{ width: `${(r.value / max) * 100}%` }} /></span>
+              <span className="st-admin-bar-value">{r.value.toLocaleString()}</span>
             </td>
           </tr>
         ))}

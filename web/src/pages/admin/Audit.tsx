@@ -25,19 +25,19 @@ const actorOf = (entry: AuditEntry) => entry.actorEmail ?? OPERATOR;
 
 function ActionPill({ action }: { action: string }) {
   const a = ACTIONS[action];
-  return a ? <span className={`ad-pill ${a.tone}`}>{a.icon()}{a.label}</span> : <span className="ad-pill is-muted">{action}</span>;
+  return a ? <span className={`st-admin-pill ${a.tone}`}>{a.icon()}{a.label}</span> : <span className="st-admin-pill is-muted">{action}</span>;
 }
 
 /* What the action affected: the account, or (domains, settings, exports) what changed.
    Several setting changes arrive joined by "; " and are shown one per line. */
 function Affected({ entry }: { entry: AuditEntry }) {
-  if (entry.targetEmail) return <span className="ad-email">{entry.targetEmail}</span>;
+  if (entry.targetEmail) return <span className="st-admin-email">{entry.targetEmail}</span>;
   const changes = entry.view?.changes ?? [];
   if (entry.action === "update_settings" && changes.length) {
-    return <ul className="ad-audit-detail">{changes.map((c, i) => <li key={i}>{c.label}: {c.before} → {c.after}</li>)}</ul>;
+    return <ul className="st-admin-audit-detail">{changes.map((c, i) => <li key={i}>{c.label}: {c.before} → {c.after}</li>)}</ul>;
   }
   if (!entry.details) return <span className="ap-muted">—</span>;
-  return <span className="ad-audit-detail">{entry.details}</span>;
+  return <span className="st-admin-audit-detail">{entry.details}</span>;
 }
 
 
@@ -53,15 +53,15 @@ function NumberedPager({ page, count, total, disabled, onPage }: { page: number;
   const from = total ? (page - 1) * AUDIT_PAGE_SIZE + 1 : 0;
   const to = Math.min(total, page * AUDIT_PAGE_SIZE);
   return (
-    <nav className="ad-numpager" aria-label="Audit log pages">
-      <p className="ap-muted ad-sub" aria-live="polite">Showing {from}–{to} of {total.toLocaleString()}</p>
-      {count > 1 && <div className="ad-numpager-btns">
+    <nav className="st-admin-numpager" aria-label="Audit log pages">
+      <p className="ap-muted st-admin-sub" aria-live="polite">Showing {from}–{to} of {total.toLocaleString()}</p>
+      {count > 1 && <div className="st-admin-numpager-btns">
         <button type="button" className="ap-page-btn" disabled={disabled || page <= 1} onClick={() => onPage(page - 1)}>‹ Previous</button>
         <ol>
           {pageItems(page, count).map((item, i) => item === "gap"
-            ? <li key={`gap${i}`} className="ad-gap" aria-hidden="true">…</li>
+            ? <li key={`gap${i}`} className="st-admin-gap" aria-hidden="true">…</li>
             : <li key={item}>
-                <button type="button" className="ad-page-num" disabled={disabled} aria-current={item === page ? "page" : undefined}
+                <button type="button" className="st-admin-page-num" disabled={disabled} aria-current={item === page ? "page" : undefined}
                   aria-label={`Page ${item}`} onClick={() => onPage(item)}>{item}</button>
               </li>)}
         </ol>
@@ -86,61 +86,61 @@ function DetailPanel({ entry, onClose }: { entry: AuditEntry; onClose: () => voi
   const longChange = (before: string, after: string) => before.length + after.length > 48;
 
   return (
-    <dialog ref={ref} className="ad-drawer" aria-labelledby="audit-detail-title" onClose={onClose}
+    <dialog ref={ref} className="st-admin-drawer" aria-labelledby="audit-detail-title" onClose={onClose}
       onClick={e => { if (e.target === ref.current) ref.current.close(); }}>
-      <div className="ad-drawer-body">
-        <header className="ad-drawer-head">
+      <div className="st-admin-drawer-body">
+        <header className="st-admin-drawer-head">
           <div>
-            <p className="ad-drawer-kicker">Audit entry</p>
+            <p className="st-admin-drawer-kicker">Audit entry</p>
             <h2 id="audit-detail-title" className="visually-hidden">{actionLabel(entry.action)}</h2>
             <ActionPill action={entry.action} />
           </div>
-          <button ref={closeBtn} type="button" className="ad-drawer-close" aria-label="Close details" onClick={() => ref.current?.close()}><IconClose /></button>
+          <button ref={closeBtn} type="button" className="st-admin-drawer-close" aria-label="Close details" onClick={() => ref.current?.close()}><IconClose /></button>
         </header>
 
-        <dl className="ad-kv">
+        <dl className="st-admin-kv">
           <div><dt>When</dt><dd>{fmt(entry.createdAt)} <span className="ap-muted">({ago(entry.createdAt).toLowerCase()})</span></dd></div>
           <div><dt>By</dt><dd>{actorOf(entry)}</dd></div>
         </dl>
 
-        <section className="ad-drawer-section" aria-labelledby="audit-what">
+        <section className="st-admin-drawer-section" aria-labelledby="audit-what">
           <h3 id="audit-what">What happened</h3>
           {view.fields.length > 0 && (
-            <dl className="ad-kv">
-              {view.fields.map((f, i) => <div key={i}><dt>{f.label}</dt><dd className={f.mono ? "ad-mono" : undefined}>{f.value}</dd></div>)}
+            <dl className="st-admin-kv">
+              {view.fields.map((f, i) => <div key={i}><dt>{f.label}</dt><dd className={f.mono ? "st-admin-mono" : undefined}>{f.value}</dd></div>)}
             </dl>
           )}
           {view.changes.length > 0 && (
-            <ul className="ad-changes">
+            <ul className="st-admin-changes">
               {view.changes.map((c, i) => (
                 <li key={i} className={longChange(c.before, c.after) ? "is-long" : undefined}>
-                  <span className="ad-change-label">{c.label}</span>
+                  <span className="st-admin-change-label">{c.label}</span>
                   {longChange(c.before, c.after) ? (
-                    <span className="ad-change-blocks">
-                      <span><span className="ad-change-tag">Before</span><span className="ad-change-text">{c.before}</span></span>
-                      <span><span className="ad-change-tag">After</span><span className="ad-change-text">{c.after}</span></span>
+                    <span className="st-admin-change-blocks">
+                      <span><span className="st-admin-change-tag">Before</span><span className="st-admin-change-text">{c.before}</span></span>
+                      <span><span className="st-admin-change-tag">After</span><span className="st-admin-change-text">{c.after}</span></span>
                     </span>
                   ) : (
-                    <span className="ad-change-inline"><span className="ad-change-from">{c.before}</span><span aria-label="changed to">→</span><strong>{c.after}</strong></span>
+                    <span className="st-admin-change-inline"><span className="st-admin-change-from">{c.before}</span><span aria-label="changed to">→</span><strong>{c.after}</strong></span>
                   )}
                 </li>
               ))}
             </ul>
           )}
-          {view.note && <p className="ad-drawer-note">{Icons.info()}<span>{view.note}</span></p>}
+          {view.note && <p className="st-admin-drawer-note">{Icons.info()}<span>{view.note}</span></p>}
         </section>
 
-        <section className="ad-drawer-section" aria-labelledby="audit-reason">
+        <section className="st-admin-drawer-section" aria-labelledby="audit-reason">
           <h3 id="audit-reason">Reason</h3>
-          {entry.reason ? <p className="ad-reason-text">{entry.reason}</p> : <p className="ad-no-reason">No reason given</p>}
+          {entry.reason ? <p className="st-admin-reason-text">{entry.reason}</p> : <p className="st-admin-no-reason">No reason given</p>}
         </section>
 
-        <details className="ad-more">
+        <details className="st-admin-more">
           <summary>More details</summary>
-          <dl className="ad-kv ad-kv-small">
-            <div><dt>Log ID</dt><dd className="ad-mono">{String(entry.id)}</dd></div>
-            <div><dt>Action code</dt><dd className="ad-mono">{entry.action}</dd></div>
-            <div><dt>Recorded at</dt><dd className="ad-mono">{new Date(entry.createdAt).toISOString()}</dd></div>
+          <dl className="st-admin-kv st-admin-kv-small">
+            <div><dt>Log ID</dt><dd className="st-admin-mono">{String(entry.id)}</dd></div>
+            <div><dt>Action code</dt><dd className="st-admin-mono">{entry.action}</dd></div>
+            <div><dt>Recorded at</dt><dd className="st-admin-mono">{new Date(entry.createdAt).toISOString()}</dd></div>
             {entry.details && <div><dt>Recorded details</dt><dd>{entry.details}</dd></div>}
           </dl>
         </details>
@@ -215,30 +215,30 @@ export function Audit() {
     </Empty>
   );
   else body = <>
-    <div className="ad-table-wrap">
-      <table className="ad-table ad-audit-table">
+    <div className="st-admin-table-wrap">
+      <table className="st-admin-table st-admin-audit-table">
         <thead><tr><th scope="col">Time</th><th scope="col">Action</th><th scope="col">Affected</th><th scope="col">By</th><th scope="col"><span className="visually-hidden">Details</span></th></tr></thead>
         <tbody>{audit.map(entry => (
-          <tr key={String(entry.id)} className="ad-row-click" tabIndex={0} aria-haspopup="dialog"
+          <tr key={String(entry.id)} className="st-admin-row-click" tabIndex={0} aria-haspopup="dialog"
             aria-label={`${actionLabel(entry.action)}, ${ago(entry.createdAt)}. Open details`}
             onClick={e => show(entry, e.currentTarget)} onKeyDown={e => onRowKey(e, entry)}>
-            <td><div title={fmt(entry.createdAt)}>{ago(entry.createdAt)}</div><div className="ap-muted ad-sub">{fmt(entry.createdAt)}</div></td>
+            <td><div title={fmt(entry.createdAt)}>{ago(entry.createdAt)}</div><div className="ap-muted st-admin-sub">{fmt(entry.createdAt)}</div></td>
             <td><ActionPill action={entry.action} /></td>
             <td><Affected entry={entry} /></td>
             <td className="ap-muted">{actorOf(entry)}</td>
-            <td className="ad-chevron-cell"><span className="ad-row-chevron" aria-hidden="true"><IconChevron /></span></td>
+            <td className="st-admin-chevron-cell"><span className="st-admin-row-chevron" aria-hidden="true"><IconChevron /></span></td>
           </tr>
         ))}</tbody>
       </table>
     </div>
-    <ol className="ad-cards ad-timeline">
+    <ol className="st-admin-cards st-admin-timeline">
       {audit.map(entry => (
         <li key={String(entry.id)}>
-          <button type="button" className="ad-card ad-card-btn" aria-haspopup="dialog" onClick={e => show(entry, e.currentTarget)}>
-            <span className="ad-card-top"><ActionPill action={entry.action} /><span className="ap-muted ad-sub">{ago(entry.createdAt)}</span></span>
+          <button type="button" className="st-admin-card st-admin-card-btn" aria-haspopup="dialog" onClick={e => show(entry, e.currentTarget)}>
+            <span className="st-admin-card-top"><ActionPill action={entry.action} /><span className="ap-muted st-admin-sub">{ago(entry.createdAt)}</span></span>
             <Affected entry={entry} />
-            <span className="ap-muted ad-sub">By {actorOf(entry)}</span>
-            <span className="ad-card-chevron ad-row-chevron" aria-hidden="true"><IconChevron /></span>
+            <span className="ap-muted st-admin-sub">By {actorOf(entry)}</span>
+            <span className="st-admin-card-chevron st-admin-row-chevron" aria-hidden="true"><IconChevron /></span>
           </button>
         </li>
       ))}
@@ -248,7 +248,7 @@ export function Audit() {
   return (
     <Section title="Audit log" description="Every admin action is recorded here. Select an entry to see its details." actions={exportButton}>
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="ap-card ad-table-card" ref={tableTop} aria-busy={loading}>
+      <div className="ap-card st-admin-table-card" ref={tableTop} aria-busy={loading}>
         {body}
         {!loading && total > 0 && <NumberedPager page={page} count={pageCount} total={total} disabled={loading} onPage={goTo} />}
       </div>

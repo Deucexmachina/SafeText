@@ -40,29 +40,29 @@ export function Overview() {
         const v = overview.verdictsToday;
         const total = v.safe + v.suspicious + v.malicious + v.inconclusive;
         const failed = overview.health.failedToday;
-        return <div className="ad-overview">
-          <div className="ad-stats">
+        return <div className="st-admin-overview">
+          <div className="st-admin-stats">
             <StatTile label="Total users" value={overview.totalUsers} icon={Icons.users()} />
             <StatTile label="Scans today" value={overview.scansToday} icon={Icons.scan()} />
             <StatTile label="Scans failed today" value={failed} icon={Icons.alert()} tone={failed > 0 ? "warn" : "ok"}
               status={failed > 0 ? "Check provider health below" : "No failures"} />
           </div>
 
-          <div className="ad-grid">
-            <div className="ap-card ad-panel">
+          <div className="st-admin-grid">
+            <div className="ap-card st-admin-panel">
               <h3>Verdicts today</h3>
               {total === 0 ? <Empty title="No finished scans today" /> : <>
-                <div className="ad-split" aria-hidden="true">
-                  {VERDICTS.map(k => v[k] > 0 && <span key={k} className={`ad-split-${k}`} style={{ flexGrow: v[k] }} />)}
+                <div className="st-admin-split" aria-hidden="true">
+                  {VERDICTS.map(k => v[k] > 0 && <span key={k} className={`st-admin-split-${k}`} style={{ flexGrow: v[k] }} />)}
                 </div>
-                <table className="ad-verdicts">
+                <table className="st-admin-verdicts">
                   <caption className="visually-hidden">Verdicts for scans finished today</caption>
                   <tbody>
                     {VERDICTS.map(k => (
                       <tr key={k}>
                         <th scope="row"><VerdictTag kind={k} /></th>
-                        <td className="ad-num">{v[k].toLocaleString()}</td>
-                        <td className="ad-pct ap-muted">{Math.round((v[k] / total) * 100)}%</td>
+                        <td className="st-admin-num">{v[k].toLocaleString()}</td>
+                        <td className="st-admin-pct ap-muted">{Math.round((v[k] / total) * 100)}%</td>
                       </tr>
                     ))}
                   </tbody>
@@ -70,16 +70,16 @@ export function Overview() {
               </>}
             </div>
 
-            <div className="ap-card ad-panel">
+            <div className="ap-card st-admin-panel">
               <h3>Provider health</h3>
-              <ul className="ad-providers">
+              <ul className="st-admin-providers">
                 {overview.health.providers.map(p => {
                   const live = p.mode === "live";
                   return (
                     <li key={p.id}>
-                      <span className="ad-provider-name">{p.label}</span>
-                      <span className={`ad-pill ${live ? "is-ok" : "is-muted"}`}>{live ? Icons.check(14) : Icons.info()}{live ? "Live" : p.mode === "stub" ? "Stub" : p.mode}</span>
-                      <span className={`ad-provider-fail${p.failuresToday > 0 ? " is-warn" : ""}`}>
+                      <span className="st-admin-provider-name">{p.label}</span>
+                      <span className={`st-admin-pill ${live ? "is-ok" : "is-muted"}`}>{live ? Icons.check(14) : Icons.info()}{live ? "Live" : p.mode === "stub" ? "Stub" : p.mode}</span>
+                      <span className={`st-admin-provider-fail${p.failuresToday > 0 ? " is-warn" : ""}`}>
                         {p.failuresToday > 0 && Icons.alert(14)}{p.failuresToday} {p.failuresToday === 1 ? "failure" : "failures"} today
                       </span>
                     </li>
@@ -89,7 +89,7 @@ export function Overview() {
               <Note>"Stub" means no API key is configured — the provider returns canned data and stages may fail in real runs.</Note>
             </div>
 
-            <div className="ap-card ad-panel">
+            <div className="ap-card st-admin-panel">
               <h3>Scam trends, last 7 days</h3>
               {overview.scamTrends7d.length === 0
                 ? <Empty title="No categorized scam scans this week." />
@@ -98,7 +98,7 @@ export function Overview() {
               <Note>Categories only — message text is never included in trends.</Note>
             </div>
 
-            <div className="ap-card ad-panel">
+            <div className="ap-card st-admin-panel">
               <h3>Top flagged link domains</h3>
               {overview.topFlaggedDomains.length === 0
                 ? <Empty title="No flagged links yet." />

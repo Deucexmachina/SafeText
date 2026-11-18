@@ -12,14 +12,14 @@ const STATUS_OPTIONS: { value: UserFilter["status"]; label: string }[] = [
 ];
 
 function Signal({ value, threshold, title }: { value: number; threshold: number; title: string }) {
-  if (value < threshold) return <span className="ad-num">{value}</span>;
-  return <span className="ad-chip-warn" title={title}>{Icons.alert(13)}{value}</span>;
+  if (value < threshold) return <span className="st-admin-num">{value}</span>;
+  return <span className="st-admin-chip-warn" title={title}>{Icons.alert(13)}{value}</span>;
 }
 
 function StatusPill({ user }: { user: AdminUser }) {
   return user.disabled
-    ? <span className="ad-pill is-bad">{Icons.lock()}Disabled</span>
-    : <span className="ad-pill is-ok">{Icons.check(14)}Active</span>;
+    ? <span className="st-admin-pill is-bad">{Icons.lock()}Disabled</span>
+    : <span className="st-admin-pill is-ok">{Icons.check(14)}Active</span>;
 }
 
 export function Accounts() {
@@ -79,13 +79,13 @@ export function Accounts() {
 
   const filtered = filter.search || filter.status || filter.from || filter.to;
   const actions = (user: AdminUser) => user.role === "admin"
-    ? <span className="ad-pill is-muted">Administrator</span>
-    : <div className="ad-row-actions">
-        <button type="button" className={`ad-btn${user.disabled ? "" : " ad-btn-danger"}`} disabled={busy}
+    ? <span className="st-admin-pill is-muted">Administrator</span>
+    : <div className="st-admin-row-actions">
+        <button type="button" className={`st-admin-btn${user.disabled ? "" : " st-admin-btn-danger"}`} disabled={busy}
           onClick={() => { setPendingUser(user); setDialogError(""); setNotice(""); }}>
           {user.disabled ? Icons.unlock() : Icons.lock()}{user.disabled ? "Enable" : "Disable"}
         </button>
-        <button type="button" className="ad-btn" disabled={busy}
+        <button type="button" className="st-admin-btn" disabled={busy}
           onClick={() => { setPendingLogout(user); setDialogError(""); setNotice(""); }}>
           {Icons.logout()}Log out
         </button>
@@ -117,31 +117,31 @@ export function Accounts() {
         onConfirm={values => void forceLogout(pendingLogout, values.reason)}
       />}
 
-      <form className="ap-card ad-filters" onSubmit={applyFilter}>
-        <div className="ap-search ad-filter-search">
+      <form className="ap-card st-admin-filters" onSubmit={applyFilter}>
+        <div className="ap-search st-admin-filter-search">
           <label htmlFor="acct-search" className="visually-hidden">Search by email</label>
           {Icons.search()}
           <input id="acct-search" type="search" placeholder="Search email" value={draft.search} onChange={e => setDraft({ ...draft, search: e.target.value })} />
         </div>
-        <div className="ad-filter-status" role="group" aria-label="Filter by status">
+        <div className="st-admin-filter-status" role="group" aria-label="Filter by status">
           {STATUS_OPTIONS.map(o => (
             <button key={o.value || "all"} type="button" className="ap-filter" aria-pressed={draft.status === o.value}
               onClick={() => setDraft({ ...draft, status: o.value })}>{o.label}</button>
           ))}
         </div>
-        <div className="ad-filter-dates">
-          <div className="ad-date-field">
+        <div className="st-admin-filter-dates">
+          <div className="st-admin-date-field">
             <label htmlFor="joined-from">Joined from</label>
             <DatePicker id="joined-from" value={draft.from} max={draft.to || today} placeholder="Any date"
               onChange={from => setDraft({ ...draft, from })} />
           </div>
-          <div className="ad-date-field dp-align-end">
+          <div className="st-admin-date-field dp-align-end">
             <label htmlFor="joined-to">to</label>
             <DatePicker id="joined-to" value={draft.to} min={draft.from || undefined} max={today} placeholder="Any date"
               onChange={to => setDraft({ ...draft, to })} />
           </div>
         </div>
-        <div className="ad-filter-buttons">
+        <div className="st-admin-filter-buttons">
           <button className="lp-btn lp-btn-primary lp-btn-sm" type="submit" disabled={loading}>Apply</button>
           <button className="lp-btn lp-btn-secondary lp-btn-sm" type="button" disabled={loading} onClick={clearFilter}>Clear</button>
         </div>
@@ -149,12 +149,12 @@ export function Accounts() {
 
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {notice && <p className="ap-alert ap-alert-info" role="status">{Icons.check()}<span>{notice}</span></p>}
-      <div className="ap-card ad-table-card">
+      <div className="ap-card st-admin-table-card">
         {loading ? <Loading label="Loading accounts..." /> : !users.length ? (
           <Empty title={filtered ? "No accounts match" : "No accounts yet"}>{filtered ? "Try a different email, status or date range." : undefined}</Empty>
         ) : <>
-          <div className="ad-table-wrap">
-            <table className="ad-table">
+          <div className="st-admin-table-wrap">
+            <table className="st-admin-table">
               <thead><tr>
                 <th scope="col">Account</th><th scope="col">Status</th><th scope="col">Scans</th>
                 <th scope="col">Warnings</th><th scope="col">Last active</th>
@@ -163,48 +163,48 @@ export function Accounts() {
               <tbody>{users.map(user => (
                 <tr key={user.id}>
                   <td>
-                    <div className="ad-account">
-                      <span className="ad-avatar" aria-hidden="true">{user.email.charAt(0).toUpperCase()}</span>
+                    <div className="st-admin-account">
+                      <span className="st-admin-avatar" aria-hidden="true">{user.email.charAt(0).toUpperCase()}</span>
                       <div>
-                        <div className="ad-email">{user.email}{user.role === "admin" && <span className="ad-role">Admin</span>}</div>
-                        <div className="ap-muted ad-sub" title={fmt(user.createdAt)}>Joined {ago(user.createdAt)}</div>
+                        <div className="st-admin-email">{user.email}{user.role === "admin" && <span className="st-admin-role">Admin</span>}</div>
+                        <div className="ap-muted st-admin-sub" title={fmt(user.createdAt)}>Joined {ago(user.createdAt)}</div>
                       </div>
                     </div>
                   </td>
                   <td>
                     <StatusPill user={user} />
-                    {user.disabled && user.disabledReason && <div className="ad-reason" title={user.disabledReason}>{user.disabledReason}</div>}
+                    {user.disabled && user.disabledReason && <div className="st-admin-reason" title={user.disabledReason}>{user.disabledReason}</div>}
                   </td>
-                  <td className="ad-num">{user.scanCount}</td>
+                  <td className="st-admin-num">{user.scanCount}</td>
                   <td>
-                    <div className="ad-warnings">
-                      <span><span className="ad-warn-label">Failed logins</span><Signal value={user.failedLogins} threshold={5} title={`${user.failedLogins} failed login attempts`} /></span>
-                      <span><span className="ad-warn-label">Rate hits</span><Signal value={user.rateLimitHits ?? user.scanRateHits} threshold={3} title={`Scans: ${user.scanRateHits}; login/registration: ${user.authRateHits ?? 0}; reset: ${user.resetRateHits ?? 0}; general API: ${user.apiRateHits ?? 0}. Email-targeted requests may come from someone else.`} /></span>
+                    <div className="st-admin-warnings">
+                      <span><span className="st-admin-warn-label">Failed logins</span><Signal value={user.failedLogins} threshold={5} title={`${user.failedLogins} failed login attempts`} /></span>
+                      <span><span className="st-admin-warn-label">Rate hits</span><Signal value={user.rateLimitHits ?? user.scanRateHits} threshold={3} title={`Scans: ${user.scanRateHits}; login/registration: ${user.authRateHits ?? 0}; reset: ${user.resetRateHits ?? 0}; general API: ${user.apiRateHits ?? 0}. Email-targeted requests may come from someone else.`} /></span>
                     </div>
                   </td>
                   <td>
                     <div title={fmt(user.lastActiveAt)}>{ago(user.lastActiveAt)}</div>
-                    <div className="ap-muted ad-sub" title={fmt(user.lastLoginAt)}>Login {ago(user.lastLoginAt).toLowerCase()}</div>
+                    <div className="ap-muted st-admin-sub" title={fmt(user.lastLoginAt)}>Login {ago(user.lastLoginAt).toLowerCase()}</div>
                   </td>
-                  <td className="ad-actions-cell">{actions(user)}</td>
+                  <td className="st-admin-actions-cell">{actions(user)}</td>
                 </tr>
               ))}</tbody>
             </table>
           </div>
 
-          <ul className="ad-cards">
+          <ul className="st-admin-cards">
             {users.map(user => (
-              <li key={user.id} className="ad-card">
-                <div className="ad-account">
-                  <span className="ad-avatar" aria-hidden="true">{user.email.charAt(0).toUpperCase()}</span>
+              <li key={user.id} className="st-admin-card">
+                <div className="st-admin-account">
+                  <span className="st-admin-avatar" aria-hidden="true">{user.email.charAt(0).toUpperCase()}</span>
                   <div>
-                    <div className="ad-email">{user.email}{user.role === "admin" && <span className="ad-role">Admin</span>}</div>
-                    <div className="ap-muted ad-sub">Joined {ago(user.createdAt)}</div>
+                    <div className="st-admin-email">{user.email}{user.role === "admin" && <span className="st-admin-role">Admin</span>}</div>
+                    <div className="ap-muted st-admin-sub">Joined {ago(user.createdAt)}</div>
                   </div>
                 </div>
-                <div><StatusPill user={user} />{user.disabled && user.disabledReason && <div className="ad-reason">{user.disabledReason}</div>}</div>
-                <dl className="ad-facts">
-                  <div><dt>Scans</dt><dd className="ad-num">{user.scanCount}</dd></div>
+                <div><StatusPill user={user} />{user.disabled && user.disabledReason && <div className="st-admin-reason">{user.disabledReason}</div>}</div>
+                <dl className="st-admin-facts">
+                  <div><dt>Scans</dt><dd className="st-admin-num">{user.scanCount}</dd></div>
                   <div><dt>Failed logins</dt><dd><Signal value={user.failedLogins} threshold={5} title={`${user.failedLogins} failed login attempts`} /></dd></div>
                   <div><dt>Rate hits</dt><dd><Signal value={user.rateLimitHits ?? user.scanRateHits} threshold={3} title={`Scans: ${user.scanRateHits}; login/registration: ${user.authRateHits ?? 0}; reset: ${user.resetRateHits ?? 0}; general API: ${user.apiRateHits ?? 0}. Email-targeted requests may come from someone else.`} /></dd></div>
                   <div><dt>Last active</dt><dd>{ago(user.lastActiveAt)}</dd></div>

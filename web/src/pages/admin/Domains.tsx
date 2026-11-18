@@ -54,20 +54,20 @@ export function Domains() {
 
   return (
     <Section title="Domains" description="Blocklisted domains are always flagged; allowlisted domains are never flagged. Subdomains are included.">
-      <form className="ap-card ad-domain-form" onSubmit={submit}>
-        <div className="ad-field">
-          <label htmlFor="domain-input" className="ad-label">Domain</label>
-          <input id="domain-input" className="ad-input ad-mono" type="text" placeholder="gcash.com" autoComplete="off" spellCheck={false}
+      <form className="ap-card st-admin-domain-form" onSubmit={submit}>
+        <div className="st-admin-field">
+          <label htmlFor="domain-input" className="st-admin-label">Domain</label>
+          <input id="domain-input" className="st-admin-input st-admin-mono" type="text" placeholder="gcash.com" autoComplete="off" spellCheck={false}
             value={draft} onChange={e => setDraft(e.target.value)} />
         </div>
-        <fieldset className="ad-field ad-seg">
-          <legend className="ad-label">Add to</legend>
-          <div className="ad-seg-row">
+        <fieldset className="st-admin-field st-admin-seg">
+          <legend className="st-admin-label">Add to</legend>
+          <div className="st-admin-seg-row">
             <label className={list === "block" ? "is-on is-bad" : ""}><input type="radio" name="list" value="block" checked={list === "block"} onChange={() => setList("block")} />{Icons.lock()}Blocklist</label>
             <label className={list === "allow" ? "is-on is-ok" : ""}><input type="radio" name="list" value="allow" checked={list === "allow"} onChange={() => setList("allow")} />{Icons.check(15)}Allowlist</label>
           </div>
         </fieldset>
-        <button className="lp-btn lp-btn-primary ad-domain-add" type="submit" disabled={busy || !draft.trim()} aria-busy={busy && !removing}>
+        <button className="lp-btn lp-btn-primary st-admin-domain-add" type="submit" disabled={busy || !draft.trim()} aria-busy={busy && !removing}>
           {busy && !removing ? <span className="lp-spinner" aria-hidden="true" /> : null}Add domain
         </button>
       </form>
@@ -75,7 +75,7 @@ export function Domains() {
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {notice && <p className="ap-alert ap-alert-info" role="status">{Icons.check()}<span>{notice}</span></p>}
 
-      <div className="ap-card ad-table-card">
+      <div className="ap-card st-admin-table-card">
         <div className="ap-toolbar">
           <div className="ap-search">
             <label htmlFor="domain-search" className="visually-hidden">Search domains</label>
@@ -85,7 +85,7 @@ export function Domains() {
           <div className="ap-filters" role="group" aria-label="Show list">
             {(["all", "block", "allow"] as ListFilter[]).map(f => (
               <button key={f} type="button" className="ap-filter" aria-pressed={show === f} onClick={() => setShow(f)}>
-                {f === "all" ? "All" : f === "block" ? "Blocked" : "Allowed"} <span className="ad-count">{counts[f]}</span>
+                {f === "all" ? "All" : f === "block" ? "Blocked" : "Allowed"} <span className="st-admin-count">{counts[f]}</span>
               </button>
             ))}
           </div>
@@ -93,13 +93,13 @@ export function Domains() {
         {loading ? <Loading label="Loading domains..." /> : !domains.length ? (
           <Empty title="No domains yet.">Adding a domain to a list applies to new scans.</Empty>
         ) : !visible.length ? <Empty title="No domains match." /> : (
-          <ul className="ad-domains">
+          <ul className="st-admin-domains">
             {visible.map(rule => (
               <li key={rule.domain}>
-                <span className="ad-mono ad-domain">{rule.domain}</span>
-                <span className={`ad-pill ${rule.list === "block" ? "is-bad" : "is-ok"}`}>{rule.list === "block" ? Icons.lock() : Icons.check(14)}{rule.list === "block" ? "Blocked" : "Allowed"}</span>
-                <span className="ap-muted ad-sub" title={fmt(rule.created_at)}>Added {ago(rule.created_at)}</span>
-                <button type="button" className="ad-btn" disabled={busy} aria-busy={removing === rule.domain}
+                <span className="st-admin-mono st-admin-domain">{rule.domain}</span>
+                <span className={`st-admin-pill ${rule.list === "block" ? "is-bad" : "is-ok"}`}>{rule.list === "block" ? Icons.lock() : Icons.check(14)}{rule.list === "block" ? "Blocked" : "Allowed"}</span>
+                <span className="ap-muted st-admin-sub" title={fmt(rule.created_at)}>Added {ago(rule.created_at)}</span>
+                <button type="button" className="st-admin-btn" disabled={busy} aria-busy={removing === rule.domain}
                   aria-label={`Remove ${rule.domain}`} onClick={() => void remove(rule.domain)}>
                   {removing === rule.domain ? <span className="lp-spinner" aria-hidden="true" /> : Icons.trash()}<span>Remove</span>
                 </button>

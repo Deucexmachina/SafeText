@@ -72,22 +72,22 @@ export function Settings() {
 
   return (
     <Section title="Settings" description="Changes apply to everyone as soon as you save.">
-      <form className="ad-settings" onSubmit={submit} noValidate>
-        <fieldset className="ap-card ad-panel">
-          <legend className="ad-legend"><h3>Limits</h3></legend>
-          <div className="ad-settings-grid">
+      <form className="st-admin-settings" onSubmit={submit} noValidate>
+        <fieldset className="ap-card st-admin-panel">
+          <legend className="st-admin-legend"><h3>Limits</h3></legend>
+          <div className="st-admin-settings-grid">
             {SETTING_FIELDS.map(({ key, label, unit, min, max, help }) => {
               const bad = outOfRange(key, min, max);
               return (
-                <div className="ad-field" key={key}>
-                  <label htmlFor={`set-${key}`} className="ad-label">{label}</label>
-                  <div className="ad-number">
-                    <input id={`set-${key}`} className="ad-input" type="number" inputMode="numeric" min={min} max={max}
+                <div className="st-admin-field" key={key}>
+                  <label htmlFor={`set-${key}`} className="st-admin-label">{label}</label>
+                  <div className="st-admin-number">
+                    <input id={`set-${key}`} className="st-admin-input" type="number" inputMode="numeric" min={min} max={max}
                       value={Number.isNaN(settings[key]) ? "" : settings[key]} aria-invalid={bad || undefined} aria-describedby={`set-${key}-help`}
                       onChange={e => update({ [key]: e.target.value === "" ? NaN : Number(e.target.value) } as Partial<AdminSettings>)} />
-                    <span className="ad-unit">{unit}</span>
+                    <span className="st-admin-unit">{unit}</span>
                   </div>
-                  <p id={`set-${key}-help`} className={`ad-help${bad ? " is-bad" : ""}`}>
+                  <p id={`set-${key}-help`} className={`st-admin-help${bad ? " is-bad" : ""}`}>
                     {bad && Icons.alert(14)}{bad ? `Enter a whole number from ${min} to ${max.toLocaleString()}.` : `${help} (${min}–${max.toLocaleString()})`}
                   </p>
                 </div>
@@ -96,19 +96,19 @@ export function Settings() {
           </div>
         </fieldset>
 
-        <fieldset className="ap-card ad-panel">
-          <legend className="ad-legend"><h3>Announcement banner</h3></legend>
-          <div className="ad-field">
-            <label htmlFor="set-announcement" className="ad-label">Message</label>
-            <input id="set-announcement" className="ad-input" type="text" maxLength={500} placeholder="Shown to everyone who visits SafeText"
+        <fieldset className="ap-card st-admin-panel">
+          <legend className="st-admin-legend"><h3>Announcement banner</h3></legend>
+          <div className="st-admin-field">
+            <label htmlFor="set-announcement" className="st-admin-label">Message</label>
+            <input id="set-announcement" className="st-admin-input" type="text" maxLength={500} placeholder="Shown to everyone who visits SafeText"
               value={settings.announcement} aria-describedby="set-announcement-help" onChange={e => update({ announcement: e.target.value })} />
-            <p id="set-announcement-help" className="ad-help">Leave empty to hide the banner. {settings.announcement.length}/500</p>
+            <p id="set-announcement-help" className="st-admin-help">Leave empty to hide the banner. {settings.announcement.length}/500</p>
           </div>
 
-          <div className="ad-announce-grid">
-            <fieldset className="ad-field ad-seg">
-              <legend className="ad-label">Type</legend>
-              <div className="ad-seg-row">
+          <div className="st-admin-announce-grid">
+            <fieldset className="st-admin-field st-admin-seg">
+              <legend className="st-admin-label">Type</legend>
+              <div className="st-admin-seg-row">
                 <label className={settings.announcementType === "info" ? "is-on is-ok" : ""}>
                   <input type="radio" name="announcement-type" value="info" checked={settings.announcementType === "info"} onChange={() => update({ announcementType: "info" })} />
                   {Icons.info()}Information
@@ -118,12 +118,12 @@ export function Settings() {
                   {Icons.alert(16)}Warning
                 </label>
               </div>
-              <p className="ad-help">Information is calm green. Warning is amber, for things people must notice.</p>
+              <p className="st-admin-help">Information is calm green. Warning is amber, for things people must notice.</p>
             </fieldset>
 
-            <div className="ad-field">
-              <label htmlFor="set-announcement-until" className="ad-label">Show until <span className="ad-optional">(optional)</span></label>
-              <div className="ad-until-row">
+            <div className="st-admin-field">
+              <label htmlFor="set-announcement-until" className="st-admin-label">Show until <span className="st-admin-optional">(optional)</span></label>
+              <div className="st-admin-until-row">
                 <DatePicker id="set-announcement-until" withTime placeholder="No end time"
                   value={toLocalInput(settings.announcementUntil)}
                   min={toLocalInput(new Date().toISOString()).slice(0, 10)}
@@ -131,7 +131,7 @@ export function Settings() {
                   invalid={untilInvalid} describedBy="set-announcement-until-help"
                   onChange={v => update({ announcementUntil: fromLocalInput(v) })} />
               </div>
-              <p id="set-announcement-until-help" className={`ad-help${untilInvalid || (untilPast && !untilChanged) ? " is-bad" : ""}`}>
+              <p id="set-announcement-until-help" className={`st-admin-help${untilInvalid || (untilPast && !untilChanged) ? " is-bad" : ""}`}>
                 {untilInvalid
                   ? <>{Icons.alert(14)}{untilPast ? "Pick a time in the future." : "Pick a time within the next year."}</>
                   : untilPast
@@ -143,32 +143,32 @@ export function Settings() {
             </div>
           </div>
 
-          {settings.announcement.trim() && <div className="ad-preview" aria-label="Banner preview">
-            <span className="ad-preview-label">Preview</span>
+          {settings.announcement.trim() && <div className="st-admin-preview" aria-label="Banner preview">
+            <span className="st-admin-preview-label">Preview</span>
             <div className="st-banner-preview">
               <Banner kind={settings.announcementType} onDismiss={() => undefined}>{settings.announcement}</Banner>
             </div>
-            <p className="ad-help">Shown under the navbar on every page. People can close it with ✕; a new message shows again.</p>
+            <p className="st-admin-help">Shown under the navbar on every page. People can close it with ✕; a new message shows again.</p>
           </div>}
         </fieldset>
 
-        <fieldset className="ap-card ad-panel">
-          <legend className="ad-legend"><h3>Maintenance mode</h3></legend>
-          <label className="ad-switch-row">
-            <input type="checkbox" role="switch" className="ad-switch-input" checked={settings.maintenance} onChange={e => update({ maintenance: e.target.checked })} />
-            <span className="ad-switch" aria-hidden="true" />
-            <span><strong>Maintenance mode — pause all new scans</strong><span className="ap-muted ad-sub">Users see a maintenance notice and can't submit messages until you turn this off.</span></span>
+        <fieldset className="ap-card st-admin-panel">
+          <legend className="st-admin-legend"><h3>Maintenance mode</h3></legend>
+          <label className="st-admin-switch-row">
+            <input type="checkbox" role="switch" className="st-admin-switch-input" checked={settings.maintenance} onChange={e => update({ maintenance: e.target.checked })} />
+            <span className="st-admin-switch" aria-hidden="true" />
+            <span><strong>Maintenance mode — pause all new scans</strong><span className="ap-muted st-admin-sub">Users see a maintenance notice and can't submit messages until you turn this off.</span></span>
           </label>
           {settings.maintenance && <div className="ap-alert ap-alert-warn">{Icons.alert()}<span>New scans will be paused for everyone once you save.</span></div>}
         </fieldset>
 
         {error && <ErrorAlert>{error}</ErrorAlert>}
 
-        <div className={`ad-savebar${dirty ? " is-dirty" : ""}`}>
-          <span className="ad-savebar-status" role="status">
+        <div className={`st-admin-savebar${dirty ? " is-dirty" : ""}`}>
+          <span className="st-admin-savebar-status" role="status">
             {savedNotice && !dirty ? <>{Icons.check()}Settings saved.</> : dirty ? "You have unsaved changes." : "All changes saved."}
           </span>
-          <div className="ad-savebar-actions">
+          <div className="st-admin-savebar-actions">
             {dirty && <button type="button" className="lp-btn lp-btn-secondary lp-btn-sm" disabled={busy} onClick={() => { setSettings(saved); setError(""); }}>Discard</button>}
             <button className="lp-btn lp-btn-primary lp-btn-sm" type="submit" disabled={busy || !dirty || invalid} aria-busy={busy}>
               {busy ? <><span className="lp-spinner" aria-hidden="true" />Saving...</> : "Save settings"}
